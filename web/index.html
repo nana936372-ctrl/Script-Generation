@@ -1,0 +1,420 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AI 编导脚本生成工具 Demo</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="app-header">
+      <div>
+        <p class="eyebrow">MVP Demo</p>
+        <h1>AI 编导脚本生成工具</h1>
+      </div>
+      <div class="status-pill" id="runtimeStatus">等待创建任务</div>
+    </header>
+
+    <nav class="workflow-nav" aria-label="核心链路导航">
+      <div class="workflow-nav-title">
+        <p class="eyebrow">Core Chain</p>
+        <h2 id="workflowTitle">核心链路执行区</h2>
+      </div>
+      <div class="workflow-strip" id="workflowStrip">
+        <div class="workflow-group p0-chain" aria-label="P0 核心链路">
+          <span class="phase-caption p0">P0 核心链路</span>
+          <a class="workflow-step active" data-phase="p0" data-flow-index="1" href="#taskCard"><span class="phase-tag">T1</span><span>任务创建</span></a>
+          <a class="workflow-step" data-phase="p0" data-flow-index="2" href="#productTitle"><span class="phase-tag">T2</span><span>产品信息</span></a>
+          <a class="workflow-step" data-phase="p0" data-flow-index="3" href="#decompositionCard"><span class="phase-tag">T3</span><span>卖点拆解</span></a>
+          <a class="workflow-step" data-phase="p0" data-flow-index="4" href="#topicsCard"><span class="phase-tag">T4</span><span>选题生成</span></a>
+          <a class="workflow-step" data-phase="p0" data-flow-index="5" href="#scriptCard"><span class="phase-tag">T5</span><span>脚本生成</span></a>
+          <a class="workflow-step" data-phase="p0" data-flow-index="6" href="#riskCard"><span class="phase-tag">T6</span><span>风险初筛</span></a>
+          <a class="workflow-step" data-phase="p0" data-flow-index="7" href="#reviewCard"><span class="phase-tag">T7</span><span>人工审核</span></a>
+          <a class="workflow-step" data-phase="p0" data-flow-index="8" href="#reviewCard"><span class="phase-tag">T8</span><span>版本保存</span></a>
+          <a class="workflow-step" data-phase="p0" data-flow-index="9" href="#tableTitle"><span class="phase-tag">T9</span><span>导出</span></a>
+        </div>
+        <div class="workflow-group p1-tools" aria-label="P1 增强能力">
+          <span class="phase-caption p1">P1 增强能力</span>
+          <a class="workflow-step" data-phase="p1" href="#qualityCard"><span>质量评分</span></a>
+          <a class="workflow-step" data-phase="p1" href="#libraryCard"><span>优秀脚本库</span></a>
+          <a class="workflow-step" data-phase="p1" href="#feedbackCard"><span>数据复盘</span></a>
+        </div>
+      </div>
+    </nav>
+
+    <main class="workspace">
+      <section class="panel input-panel" aria-labelledby="taskTitle">
+        <div class="section-title">
+          <div>
+            <p class="eyebrow">Step 1</p>
+            <h2 id="taskTitle">任务创建</h2>
+          </div>
+          <button class="ghost-button" id="fillSampleButton" type="button">填入示例</button>
+        </div>
+
+        <form id="taskForm" class="brief-form">
+          <label>
+            <span>任务名称</span>
+            <input name="task_name" placeholder="例如：618 洁面乳脚本任务" required />
+          </label>
+
+          <div class="two-col">
+            <label>
+              <span>投放平台</span>
+              <select name="platform">
+                <option>抖音</option>
+                <option>小红书</option>
+                <option>视频号</option>
+              </select>
+            </label>
+
+            <label>
+              <span>业务目标</span>
+              <select name="business_goal">
+                <option>转化</option>
+                <option>种草</option>
+                <option>直播引流</option>
+                <option>品牌曝光</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="two-col">
+            <label>
+              <span>内容形式</span>
+              <select name="content_type">
+                <option>口播</option>
+                <option>测评</option>
+                <option>对比</option>
+                <option>剧情</option>
+                <option>直播切片</option>
+              </select>
+            </label>
+
+            <label>
+              <span>脚本数量</span>
+              <input name="script_count" type="number" min="1" value="1" />
+            </label>
+          </div>
+
+          <label>
+            <span>审核负责人</span>
+            <input name="reviewer" placeholder="例如：编导负责人" />
+          </label>
+
+          <button class="primary-button" id="createTaskButton" type="submit">创建任务</button>
+        </form>
+
+        <div class="divider"></div>
+
+        <div class="section-title compact-title">
+          <div>
+            <p class="eyebrow">Step 2</p>
+            <h2 id="productTitle">产品信息录入</h2>
+          </div>
+        </div>
+
+        <form id="briefForm" class="brief-form">
+          <label>
+            <span>产品名称</span>
+            <input name="product_name" placeholder="例如：氨基酸洁面乳" required />
+          </label>
+
+          <label>
+            <span>核心卖点</span>
+            <textarea name="selling_points" rows="4" placeholder="例如：氨基酸表活，温和清洁，洗后不紧绷" required></textarea>
+          </label>
+
+          <label>
+            <span>目标用户</span>
+            <input name="target_user" placeholder="例如：18-30 岁油敏肌女生" required />
+          </label>
+
+          <label>
+            <span>使用场景</span>
+            <textarea name="usage_scenario" rows="3" placeholder="例如：早晚洁面、熬夜后出油、换季清洁"></textarea>
+          </label>
+
+          <label>
+            <span>价格权益</span>
+            <input name="price_offer" placeholder="例如：618 活动价，买一送一" />
+          </label>
+
+          <label>
+            <span>证明材料</span>
+            <textarea name="proof_material" rows="3" placeholder="例如：检测报告、用户反馈、品牌背书"></textarea>
+          </label>
+
+          <label>
+            <span>合规要求</span>
+            <textarea name="compliance_notes" rows="3" placeholder="例如：不能承诺治疗、根治、永久改善"></textarea>
+          </label>
+
+          <button class="primary-button" id="decomposeButton" type="submit" disabled>AI 卖点拆解</button>
+        </form>
+      </section>
+
+      <section class="panel result-panel" aria-labelledby="workflowTitle">
+        <div class="step-workbench">
+          <aside class="step-rail" aria-label="结果模块目录">
+            <button class="step-rail-item active" type="button" data-phase="p0" data-step-target="taskCard">
+              <span>T1</span>
+              <strong>任务卡</strong>
+              <em>任务与产出</em>
+            </button>
+            <button class="step-rail-item" type="button" data-phase="p0" data-step-target="decompositionCard">
+              <span>T3</span>
+              <strong>卖点拆解</strong>
+              <em>分区浏览</em>
+            </button>
+            <button class="step-rail-item" type="button" data-phase="p0" data-step-target="topicsCard">
+              <span>T4</span>
+              <strong>选题池</strong>
+              <em>横向选题</em>
+            </button>
+            <button class="step-rail-item" type="button" data-phase="p0" data-step-target="scriptCard">
+              <span>T5</span>
+              <strong>脚本生成</strong>
+              <em>模块脚本</em>
+            </button>
+            <button class="step-rail-item" type="button" data-phase="p1" data-step-target="qualityCard">
+              <span>P1</span>
+              <strong>质量评分</strong>
+              <em>结构评分</em>
+            </button>
+            <button class="step-rail-item" type="button" data-phase="p0" data-step-target="riskCard">
+              <span>T6</span>
+              <strong>风险初筛</strong>
+              <em>合规检查</em>
+            </button>
+            <button class="step-rail-item" type="button" data-phase="p0" data-step-target="reviewCard">
+              <span>T7-T8</span>
+              <strong>人工审核</strong>
+              <em>版本保存</em>
+            </button>
+            <button class="step-rail-item" type="button" data-phase="p1" data-step-target="libraryCard">
+              <span>P1</span>
+              <strong>优秀脚本库</strong>
+              <em>结构沉淀</em>
+            </button>
+            <button class="step-rail-item" type="button" data-phase="p1" data-step-target="feedbackCard">
+              <span>P1</span>
+              <strong>数据复盘</strong>
+              <em>反向优化</em>
+            </button>
+          </aside>
+
+          <div class="step-stage">
+          <article class="step-card active" id="taskCard">
+            <p class="eyebrow">Step 1</p>
+            <h3>任务卡</h3>
+            <div class="task-overview">
+              <div class="task-summary-stack">
+                <div id="taskResult" class="empty-mini">创建任务后展示任务目标、平台、数量和审核人。</div>
+                <section class="deliverable-panel">
+                  <div class="module-kicker">
+                    <span class="badge">P0 交付物</span>
+                    <span class="muted">MVP</span>
+                  </div>
+                  <div class="deliverable-grid">
+                    <span>任务卡</span>
+                    <span>卖点模块</span>
+                    <span>选题池</span>
+                    <span>脚本版本</span>
+                    <span>风险初筛</span>
+                    <span>CSV / Excel</span>
+                  </div>
+                </section>
+              </div>
+            </div>
+          </article>
+
+          <article class="step-card" id="decompositionCard">
+            <div class="card-title-row">
+              <div>
+                <p class="eyebrow">Step 3</p>
+                <h3>AI 卖点拆解</h3>
+              </div>
+              <button class="secondary-button" id="topicsButton" type="button" disabled>生成选题池</button>
+            </div>
+            <div id="decompositionResult" class="empty-mini">完成产品信息录入后点击 AI 卖点拆解。</div>
+          </article>
+
+          <article class="step-card" id="topicsCard">
+            <div class="card-title-row">
+              <div>
+                <p class="eyebrow">Step 4</p>
+                <h3>AI 选题池</h3>
+              </div>
+              <div class="button-row">
+                <button class="ghost-button" id="batchScriptButton" type="button" disabled>批量生成脚本</button>
+                <button class="secondary-button" id="scriptButton" type="button" disabled>AI 生成脚本</button>
+              </div>
+            </div>
+            <div id="topicsResult" class="empty-mini">卖点拆解后生成选题池，并选择一个选题。</div>
+          </article>
+
+          <article class="step-card" id="scriptCard">
+            <div class="card-title-row">
+              <div>
+                <p class="eyebrow">Step 5</p>
+                <h3>AI 脚本生成</h3>
+              </div>
+              <div class="button-row">
+                <button class="ghost-button" id="regenerateScriptButton" type="button" disabled>AI 重新生成</button>
+                <button class="secondary-button" id="riskButton" type="button" disabled>风险词初筛</button>
+              </div>
+            </div>
+            <div id="scriptResult" class="empty-mini">选择选题后生成脚本。</div>
+          </article>
+
+          <article class="step-card" id="qualityCard">
+            <div class="card-title-row">
+              <div>
+                <p class="eyebrow">Quality Gate</p>
+                <h3>AI 质量评分</h3>
+              </div>
+              <button class="secondary-button" id="scoreQualityButton" type="button" disabled>重新评分</button>
+            </div>
+            <div id="qualityResult" class="empty-mini">脚本生成后自动评估结构、吸引力、卖点、合规和可拍摄性。</div>
+          </article>
+
+          <article class="step-card" id="riskCard">
+            <p class="eyebrow">Step 6</p>
+            <h3>风险词初筛</h3>
+            <div id="riskResult" class="empty-mini">脚本生成后执行风险词初筛。</div>
+          </article>
+
+          <article class="step-card" id="reviewCard">
+            <div class="card-title-row">
+              <div>
+                <p class="eyebrow">Step 7-8</p>
+                <h3>人工编辑审核与版本保存</h3>
+              </div>
+              <div class="button-row review-actions">
+                <button class="ghost-button" id="reviewRegenerateButton" type="button" disabled>AI 重新生成</button>
+                <button class="secondary-button" id="reviewButton" type="button" disabled>保存审核版本</button>
+              </div>
+            </div>
+            <label>
+              <span>审核状态</span>
+              <select id="reviewStatus">
+                <option>小修后通过</option>
+                <option>通过</option>
+                <option>退回 AI 重写</option>
+                <option>废弃</option>
+              </select>
+            </label>
+            <div class="review-flow-hint" id="reviewFlowHint"></div>
+            <div class="review-checklist" id="reviewChecklist">
+              <div class="empty-mini">生成脚本后显示交付前检查。</div>
+            </div>
+            <label>
+              <span>修改说明</span>
+              <input id="changeSummary" value="人工编辑审核后保存" />
+            </label>
+            <label>
+              <span>可编辑口播脚本</span>
+              <textarea id="scriptEditor" rows="9" placeholder="生成脚本后可在这里人工修改"></textarea>
+            </label>
+            <div id="versionResult" class="empty-mini">保存后生成脚本版本记录。</div>
+          </article>
+
+          <article class="step-card" id="libraryCard">
+            <div class="card-title-row">
+              <div>
+                <p class="eyebrow">Library</p>
+                <h3>优秀脚本库</h3>
+              </div>
+              <button class="secondary-button" id="refreshLibraryButton" type="button">刷新脚本库</button>
+            </div>
+            <div id="libraryResult" class="empty-mini">保存审核版本后，优秀脚本会沉淀到这里。</div>
+          </article>
+
+          <article class="step-card" id="feedbackCard">
+            <div class="card-title-row">
+              <div>
+                <p class="eyebrow">Data Feedback</p>
+                <h3>数据复盘</h3>
+              </div>
+              <button class="secondary-button" id="refreshFeedbackButton" type="button">刷新复盘</button>
+            </div>
+            <form id="campaignForm" class="metric-form">
+              <label>
+                <span>脚本 ID</span>
+                <select name="script_id" id="campaignScriptSelect"></select>
+              </label>
+              <label>
+                <span>曝光量</span>
+                <input name="impressions" type="number" min="0" value="10000" />
+              </label>
+              <label>
+                <span>3 秒播放率</span>
+                <input name="three_sec_rate" type="number" min="0" max="1" step="0.001" value="0.35" />
+              </label>
+              <label>
+                <span>完播率</span>
+                <input name="completion_rate" type="number" min="0" max="1" step="0.001" value="0.22" />
+              </label>
+              <label>
+                <span>点击率</span>
+                <input name="click_rate" type="number" min="0" max="1" step="0.001" value="0.06" />
+              </label>
+              <label>
+                <span>转化率</span>
+                <input name="conversion_rate" type="number" min="0" max="1" step="0.001" value="0.018" />
+              </label>
+              <label>
+                <span>ROI</span>
+                <input name="roi" type="number" min="0" step="0.01" value="1.8" />
+              </label>
+              <button class="primary-button" type="submit">回传投放数据</button>
+            </form>
+            <div id="feedbackResult" class="empty-mini">导入投放数据后，系统会总结高表现结构和优化建议。</div>
+          </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel table-panel" aria-labelledby="tableTitle">
+        <div class="section-title">
+          <div>
+            <p class="eyebrow">Step 9</p>
+            <h2 id="tableTitle">CSV / Excel 导出</h2>
+            <p class="export-time-status" id="exportTimeStatus">最近导出时间：暂无</p>
+          </div>
+          <div class="button-row">
+            <a class="secondary-button link-button" href="/api/export.csv" data-export-format="CSV">导出 CSV</a>
+            <a class="secondary-button link-button" href="/api/export.xls" data-export-format="Excel">导出 Excel</a>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>产品</th>
+                <th>平台</th>
+                <th>标题</th>
+                <th>Hook</th>
+                <th>生成时间</th>
+                <th>保存时间</th>
+                <th>质量分</th>
+                <th>审核状态</th>
+                <th>版本</th>
+                <th>最近导出</th>
+              </tr>
+            </thead>
+            <tbody id="savedTableBody">
+              <tr>
+                <td colspan="10" class="muted">暂无保存脚本</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
