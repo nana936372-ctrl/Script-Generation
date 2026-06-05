@@ -83,6 +83,12 @@ CSV_HEADERS = [
     ("hook", "Hook"),
     ("spoken_script", "口播脚本"),
     ("conversion_cta", "转化口播"),
+    ("storyboard", "分镜建议"),
+    ("subtitle_points", "字幕重点"),
+    ("material_suggestions", "素材建议"),
+    ("risk_notes", "合规提醒"),
+    ("needs_confirmation", "待确认信息"),
+    ("risk_findings", "风险初筛命中"),
     ("generation_mode", "生成模式"),
     ("review_status", "审核状态"),
     ("reviewer", "审核人"),
@@ -614,4 +620,35 @@ def _export_value(record: dict[str, Any], key: str, exported_at: str = "") -> An
             value = value.get(part, "")
         else:
             return ""
+    return _format_export_value(value)
+
+
+def _format_export_value(value: Any) -> Any:
+    if isinstance(value, list):
+        return "\n".join(_format_export_item(item) for item in value if _format_export_item(item))
+    if isinstance(value, dict):
+        return _format_export_item(value)
     return value
+
+
+def _format_export_item(value: Any) -> str:
+    if isinstance(value, dict):
+        if any(key in value for key in ("time", "visual", "note")):
+            parts = [str(value.get(key, "")).strip() for key in ("time", "visual", "note")]
+            return " | ".join(part for part in parts if part)
+        if any(key in value for key in ("word", "category", "replacement")):
+            word = str(value.get("word", "")).strip()
+            category = str(value.get("category", "")).strip()
+            replacement = str(value.get("replacement", "")).strip()
+            segments = [word, category]
+            if replacement:
+                segments.append(f"建议：{replacement}")
+            return " | ".join(segment for segment in segments if segment)
+        return "；".join(
+            f"{key}：{_format_export_item(child)}"
+            for key, child in value.items()
+            if _format_export_item(child)
+        )
+    if isinstance(value, list):
+        return "；".join(_format_export_item(item) for item in value if _format_export_item(item))
+    return str(value).strip()

@@ -230,6 +230,35 @@ class DemoCoreTests(unittest.TestCase):
         self.assertEqual(rows[0]["质量总分"], "88")
         self.assertEqual(rows[0]["质量等级"], "B")
 
+    def test_scripts_to_csv_exports_hidden_ai_suggestion_fields(self):
+        records = [
+            {
+                "id": "script-1",
+                "title": "油敏肌洁面怎么选",
+                "storyboard": [
+                    {"time": "0-3s", "visual": "产品特写", "note": "字幕突出温和"},
+                    {"time": "3-8s", "visual": "起泡使用", "note": "说明洗后不紧绷"},
+                ],
+                "subtitle_points": ["温和清洁", "洗后不紧绷"],
+                "material_suggestions": ["产品实拍", "检测报告截图"],
+                "risk_notes": ["避免医疗化表达"],
+                "needs_confirmation": ["价格权益需运营确认"],
+            }
+        ]
+
+        csv_text = scripts_to_csv(records)
+        rows = list(csv.DictReader(io.StringIO(csv_text)))
+
+        self.assertIn("分镜建议", rows[0])
+        self.assertIn("字幕重点", rows[0])
+        self.assertIn("素材建议", rows[0])
+        self.assertIn("合规提醒", rows[0])
+        self.assertIn("待确认信息", rows[0])
+        self.assertIn("0-3s", rows[0]["分镜建议"])
+        self.assertIn("产品特写", rows[0]["分镜建议"])
+        self.assertIn("温和清洁", rows[0]["字幕重点"])
+        self.assertIn("检测报告截图", rows[0]["素材建议"])
+
     def test_scripts_to_csv_falls_back_to_created_at_for_missing_generation_time(self):
         records = [{"id": "script-1", "created_at": "2026-06-03T18:30:00"}]
 
@@ -291,6 +320,24 @@ class DemoCoreTests(unittest.TestCase):
         self.assertIn("质量总分", xml)
         self.assertIn("91", xml)
         self.assertIn("通过", xml)
+
+    def test_scripts_to_excel_xml_exports_hidden_ai_suggestion_fields(self):
+        records = [
+            {
+                "id": "script-1",
+                "storyboard": [{"time": "0-3s", "visual": "产品特写", "note": "开场"}],
+                "subtitle_points": ["温和清洁"],
+                "material_suggestions": ["产品实拍"],
+            }
+        ]
+
+        xml = scripts_to_excel_xml(records)
+
+        self.assertIn("分镜建议", xml)
+        self.assertIn("字幕重点", xml)
+        self.assertIn("素材建议", xml)
+        self.assertIn("0-3s", xml)
+        self.assertIn("产品实拍", xml)
 
     def test_build_review_flow_maps_status_to_next_step(self):
         rewrite_flow = build_review_flow("退回 AI 重写")

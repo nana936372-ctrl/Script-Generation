@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import unquote, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 from src.ai_client import decompose_selling_points, generate_script, generate_script_from_topic, generate_topics
 from src.config import load_project_env
@@ -23,12 +23,25 @@ from src.demo_core import (
     validate_product_brief,
 )
 from src.storage import (
+    load_decompositions,
     load_campaign_results,
+    load_products,
     load_scripts,
+    load_topics,
+    load_tasks,
     load_versions,
+    mark_scripts_exported,
     save_campaign_result,
+    save_decomposition,
+    save_product,
     save_script,
+    save_script_feedback,
     save_script_version,
+    save_task,
+    save_topic,
+    supabase_configured,
+    supabase_database_url_preview,
+    using_supabase_storage,
 )
 
 
@@ -37,8 +50,12 @@ WEB_DIR = ROOT / "web"
 DATA_DIR = ROOT / "data" / "runtime"
 DATA_FILE = DATA_DIR / "saved_scripts.jsonl"
 TASKS_FILE = DATA_DIR / "tasks.jsonl"
+PRODUCTS_FILE = DATA_DIR / "products.jsonl"
+DECOMPOSITIONS_FILE = DATA_DIR / "product_decompositions.jsonl"
+TOPICS_FILE = DATA_DIR / "topics.jsonl"
 VERSIONS_FILE = DATA_DIR / "script_versions.jsonl"
-CAMPAIGN_RESULTS_FILE = DATA_DIR / "campaign_results.jsonl"
+SCRIPT_FEEDBACK_FILE = DATA_DIR / "script_feedback.jsonl"
+CAMPAIGN_RESULTS_FILE = SCRIPT_FEEDBACK_FILE
 
 
 def _now_iso() -> str:
@@ -50,11 +67,173 @@ def _stamp_generated_at(script: dict) -> dict:
     return script
 
 
+def _first_non_empty(*values: object) -> str:
+    for value in values:
+        text = str(value or "").strip()
+        if text:
+            return text
+    return ""
+
+
+def _status_from_review(review_status: str) -> str:
+    if review_status in {"通过", "小修后通过"}:
+        return "已通过"
+    if review_status == "退回 AI 重写":
+        return "已退回"
+    if review_status == "废弃":
+        return "废弃"
+    return "待审核"
+
+
+def _product_record_from_brief(payload: dict, brief: ProductBrief) -> dict:
+    return {
+        "id": payload.get("product_id") or payload.get("id") or "",
+        "task_id": payload.get("task_id", ""),
+        "product_name": brief.product_name,
+        "selling_points": brief.selling_points,
+        "target_user": brief.target_user,
+        "usage_scenarios": brief.usage_scenario,
+        "price_info": brief.price_offer,
+        "proof_material": brief.proof_material,
+        "compliance_rules": brief.compliance_notes,
+        "platform": brief.platform,
+    }
+
+
+def _topic_record(topic: dict, *, task_id: str = "", product_id: str = "", decomposition_id: str = "") -> dict:
+    record = dict(topic)
+    topic_id = str(record.get("id", ""))
+    if topic_id.startswith("topic-") and topic_id[6:].isdigit():
+        record["source_topic_id"] = topic_id
+        record.pop("id", None)
+    record.setdefault("task_id", task_id)
+    record.setdefault("product_id", product_id)
+    record.setdefault("decomposition_id", decomposition_id)
+    record.setdefault("selected", False)
+    return record
+
+
+def _attach_script_context(
+    script: dict,
+    brief: ProductBrief,
+    topic: dict,
+    decomposition: dict,
+) -> dict:
+    record = dict(script)
+    fallback_title = _first_non_empty(topic.get("title"), f"{brief.product_name}脚本")
+    fallback_hook = _first_non_empty(topic.get("hook"), f"{brief.target_user}，这条内容先解决一个真实使用问题。")
+    record["title"] = _first_non_empty(record.get("title"), fallback_title)
+    record["hook"] = _first_non_empty(record.get("hook"), fallback_hook)
+    if not str(record.get("spoken_script", "")).strip():
+        angle = _first_non_empty(topic.get("angle"), "脚本方向")
+        record["spoken_script"] = (
+            f"{record['hook']}\n"
+            f"这条内容的角度是“{angle}”。\n"
+            f"重点讲清楚：{brief.selling_points or '核心卖点'}。\n"
+            "先还原用户场景，再说明产品适配点，最后用页面已确认信息完成转化引导。"
+        )
+    record["storyboard"] = _usable_list(record.get("storyboard")) or _fallback_storyboard()
+    record["subtitle_points"] = _usable_list(record.get("subtitle_points")) or [record["hook"], brief.selling_points]
+    record["material_suggestions"] = _usable_list(record.get("material_suggestions")) or [
+        "产品实拍",
+        "使用场景画面",
+        "可确认的证明材料",
+    ]
+    record["risk_notes"] = _usable_list(record.get("risk_notes")) or ["避免夸大、绝对化、医疗化表达"]
+    record["needs_confirmation"] = _usable_list(record.get("needs_confirmation"))
+    record.setdefault("task_id", topic.get("task_id", decomposition.get("task_id", "")))
+    record.setdefault("topic_id", topic.get("id", ""))
+    record.setdefault("product_id", topic.get("product_id", decomposition.get("product_id", "")))
+    record.setdefault("product_name", brief.product_name)
+    record.setdefault("platform", brief.platform)
+    record.setdefault("topic", topic)
+    record.setdefault("decomposition_snapshot", decomposition)
+    record.setdefault("status", "待审核")
+    return record
+
+
+def _fallback_storyboard() -> list[dict[str, str]]:
+    return [
+        {"time": "0-3s", "visual": "人物口播开场", "note": "先抛出用户痛点"},
+        {"time": "3-10s", "visual": "展示产品和使用场景", "note": "解释核心卖点"},
+        {"time": "10-20s", "visual": "补充证明材料或反馈截图", "note": "只展示已确认素材"},
+        {"time": "20-30s", "visual": "回到口播和活动页", "note": "完成转化引导"},
+    ]
+
+
+def _usable_list(value: object) -> list:
+    if isinstance(value, list):
+        return [item for item in value if item]
+    if value:
+        return [value]
+    return []
+
+
+def _save_ai_initial_script(script: dict) -> tuple[dict, dict]:
+    saved = save_script(script, DATA_FILE)
+    version = save_script_version(
+        {
+            "script_id": saved["id"],
+            "source": "AI 生成",
+            "content_json": saved,
+            "change_summary": "AI 初稿生成",
+            "editor": "AI",
+            "review_status": saved.get("review_status", "待审核"),
+            "saved_at": saved.get("generated_at"),
+        },
+        VERSIONS_FILE,
+    )
+    saved["version_no"] = version["version_no"]
+    saved = save_script(saved, DATA_FILE)
+    return saved, version
+
+
+def _export_selected_ids(query: str) -> set[str]:
+    selected_ids: set[str] = set()
+    for value in parse_qs(query).get("ids", []):
+        selected_ids.update(part.strip() for part in value.split(",") if part.strip())
+    return selected_ids
+
+
+def _filter_scripts_for_export(scripts: list[dict], selected_ids: set[str]) -> list[dict]:
+    if not selected_ids:
+        return scripts
+    filtered: list[dict] = []
+    seen_ids: set[str] = set()
+    for script in scripts:
+        script_id = str(script.get("id", ""))
+        if script_id in selected_ids and script_id not in seen_ids:
+            filtered.append(script)
+            seen_ids.add(script_id)
+    return filtered
+
+
 class DemoRequestHandler(BaseHTTPRequestHandler):
     server_version = "AIScriptDemo/1.0"
 
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
+        if parsed.path == "/api/health":
+            self._send_json(
+                {
+                    "storage_backend": "supabase" if using_supabase_storage() else "jsonl",
+                    "supabase_configured": supabase_configured(),
+                    "supabase_database_url": supabase_database_url_preview(),
+                }
+            )
+            return
+        if parsed.path == "/api/tasks":
+            self._send_json({"items": load_tasks(TASKS_FILE)})
+            return
+        if parsed.path == "/api/products":
+            self._send_json({"items": load_products(PRODUCTS_FILE)})
+            return
+        if parsed.path == "/api/decompositions":
+            self._send_json({"items": load_decompositions(DECOMPOSITIONS_FILE)})
+            return
+        if parsed.path == "/api/topics":
+            self._send_json({"items": load_topics(TOPICS_FILE)})
+            return
         if parsed.path == "/api/scripts":
             self._send_json({"items": load_scripts(DATA_FILE)})
             return
@@ -76,16 +255,22 @@ class DemoRequestHandler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/api/export.csv":
             exported_at = _now_iso()
+            selected_ids = _export_selected_ids(parsed.query)
+            scripts_to_export = _filter_scripts_for_export(load_scripts(DATA_FILE), selected_ids)
+            scripts = mark_scripts_exported(scripts_to_export, DATA_FILE, exported_at)
             self._send_text(
-                scripts_to_csv(load_scripts(DATA_FILE), exported_at=exported_at),
+                scripts_to_csv(scripts, exported_at=exported_at),
                 content_type="text/csv; charset=utf-8",
                 headers={"Content-Disposition": 'attachment; filename="ai-script-demo-export.csv"'},
             )
             return
         if parsed.path == "/api/export.xls":
             exported_at = _now_iso()
+            selected_ids = _export_selected_ids(parsed.query)
+            scripts_to_export = _filter_scripts_for_export(load_scripts(DATA_FILE), selected_ids)
+            scripts = mark_scripts_exported(scripts_to_export, DATA_FILE, exported_at)
             self._send_text(
-                scripts_to_excel_xml(load_scripts(DATA_FILE), exported_at=exported_at),
+                scripts_to_excel_xml(scripts, exported_at=exported_at),
                 content_type="application/vnd.ms-excel; charset=utf-8",
                 headers={"Content-Disposition": 'attachment; filename="ai-script-demo-export.xls"'},
             )
@@ -166,21 +351,28 @@ class DemoRequestHandler(BaseHTTPRequestHandler):
                 "status": "产品信息待录入",
                 "created_at": _now_iso(),
             }
-            TASKS_FILE.parent.mkdir(parents=True, exist_ok=True)
-            with TASKS_FILE.open("a", encoding="utf-8") as file:
-                file.write(json.dumps(task, ensure_ascii=False) + "\n")
-            self._send_json({"task": task})
+            saved = save_task(task, TASKS_FILE)
+            self._send_json({"task": saved})
         except Exception as error:
             self._send_json({"error": str(error)}, status=500)
 
     def _handle_decompose(self) -> None:
         try:
-            brief = ProductBrief.from_dict(self._read_json())
+            payload = self._read_json()
+            brief = ProductBrief.from_dict(payload)
             errors = validate_product_brief(brief)
             if errors:
                 self._send_json({"errors": errors}, status=400)
                 return
-            self._send_json({"decomposition": decompose_selling_points(brief)})
+            product = save_product(
+                {key: value for key, value in _product_record_from_brief(payload, brief).items() if value},
+                PRODUCTS_FILE,
+            )
+            decomposition = decompose_selling_points(brief)
+            decomposition["task_id"] = product.get("task_id", "")
+            decomposition["product_id"] = product["id"]
+            saved_decomposition = save_decomposition(decomposition, DECOMPOSITIONS_FILE)
+            self._send_json({"product": product, "decomposition": saved_decomposition})
         except Exception as error:
             self._send_json({"error": str(error)}, status=500)
 
@@ -193,7 +385,20 @@ class DemoRequestHandler(BaseHTTPRequestHandler):
             if errors:
                 self._send_json({"errors": errors}, status=400)
                 return
-            self._send_json({"topics": generate_topics(brief, decomposition)})
+            topics = []
+            for topic in generate_topics(brief, decomposition):
+                topics.append(
+                    save_topic(
+                        _topic_record(
+                            topic,
+                            task_id=decomposition.get("task_id", payload.get("task_id", "")),
+                            product_id=decomposition.get("product_id", payload.get("product_id", "")),
+                            decomposition_id=decomposition.get("id", ""),
+                        ),
+                        TOPICS_FILE,
+                    )
+                )
+            self._send_json({"topics": topics})
         except Exception as error:
             self._send_json({"error": str(error)}, status=500)
 
@@ -210,9 +415,21 @@ class DemoRequestHandler(BaseHTTPRequestHandler):
             if not topic:
                 self._send_json({"error": "请先选择一个选题"}, status=400)
                 return
-            script = generate_script_from_topic(brief, topic, decomposition)
+            topic["selected"] = True
+            saved_topic = save_topic(
+                _topic_record(
+                    topic,
+                    task_id=decomposition.get("task_id", topic.get("task_id", "")),
+                    product_id=decomposition.get("product_id", topic.get("product_id", "")),
+                    decomposition_id=decomposition.get("id", topic.get("decomposition_id", "")),
+                ),
+                TOPICS_FILE,
+            )
+            script = generate_script_from_topic(brief, saved_topic, decomposition)
             _stamp_generated_at(script)
-            self._send_json({"script": script})
+            script = _attach_script_context(script, brief, saved_topic, decomposition)
+            saved_script, version = _save_ai_initial_script(script)
+            self._send_json({"script": saved_script, "version": version})
         except Exception as error:
             self._send_json({"error": str(error)}, status=500)
 
@@ -229,13 +446,24 @@ class DemoRequestHandler(BaseHTTPRequestHandler):
             if not isinstance(topics, list) or not topics:
                 self._send_json({"error": "批量生成需要选题列表"}, status=400)
                 return
-            scripts = [
-                generate_script_from_topic(brief, topic, decomposition)
-                for topic in topics[: min(len(topics), 20)]
-                if isinstance(topic, dict)
-            ]
-            for script in scripts:
+            scripts = []
+            for topic in topics[: min(len(topics), 20)]:
+                if not isinstance(topic, dict):
+                    continue
+                saved_topic = save_topic(
+                    _topic_record(
+                        topic,
+                        task_id=decomposition.get("task_id", topic.get("task_id", "")),
+                        product_id=decomposition.get("product_id", topic.get("product_id", "")),
+                        decomposition_id=decomposition.get("id", topic.get("decomposition_id", "")),
+                    ),
+                    TOPICS_FILE,
+                )
+                script = generate_script_from_topic(brief, saved_topic, decomposition)
                 _stamp_generated_at(script)
+                script = _attach_script_context(script, brief, saved_topic, decomposition)
+                saved_script, _version = _save_ai_initial_script(script)
+                scripts.append(saved_script)
             self._send_json({"scripts": scripts})
         except Exception as error:
             self._send_json({"error": str(error)}, status=500)
@@ -246,7 +474,11 @@ class DemoRequestHandler(BaseHTTPRequestHandler):
             text = payload.get("text")
             script = payload.get("script")
             if text is None and isinstance(script, dict):
-                self._send_json({"findings": scan_script_risks(script)})
+                findings = scan_script_risks(script)
+                if script.get("id"):
+                    script["risk_findings"] = findings
+                    save_script(script, DATA_FILE)
+                self._send_json({"findings": findings})
                 return
             if text is None:
                 text = json.dumps(script or payload, ensure_ascii=False)
@@ -261,7 +493,11 @@ class DemoRequestHandler(BaseHTTPRequestHandler):
             if not isinstance(script, dict):
                 self._send_json({"error": "评分内容必须是脚本对象"}, status=400)
                 return
-            self._send_json({"quality_score": score_script_quality(script)})
+            quality_score = score_script_quality(script)
+            if script.get("id"):
+                script["quality_score"] = quality_score
+                save_script(script, DATA_FILE)
+            self._send_json({"quality_score": quality_score})
         except Exception as error:
             self._send_json({"error": str(error)}, status=500)
 
@@ -271,7 +507,12 @@ class DemoRequestHandler(BaseHTTPRequestHandler):
             if not payload.get("script_id"):
                 self._send_json({"error": "script_id 不能为空"}, status=400)
                 return
-            saved = save_campaign_result(payload, CAMPAIGN_RESULTS_FILE)
+            saved = save_script_feedback(payload, SCRIPT_FEEDBACK_FILE)
+            for script in load_scripts(DATA_FILE):
+                if script.get("id") == payload.get("script_id"):
+                    script["status"] = "已复盘"
+                    save_script(script, DATA_FILE)
+                    break
             insights = analyze_performance_feedback(load_scripts(DATA_FILE), load_campaign_results(CAMPAIGN_RESULTS_FILE))
             self._send_json({"campaign_result": saved, "insights": insights})
         except Exception as error:
@@ -289,7 +530,10 @@ class DemoRequestHandler(BaseHTTPRequestHandler):
             script.setdefault("generated_at", script.get("created_at") or saved_at)
             script["saved_at"] = saved_at
             script["review_status"] = payload.get("review_status", "小修后通过")
+            script["status"] = _status_from_review(script["review_status"])
             script["reviewer"] = payload.get("reviewer", "编导")
+            if script["status"] in {"已退回", "废弃"}:
+                script["reject_reason"] = payload.get("change_summary", "")
             script["quality_score"] = score_script_quality(script)
             script["review_flow"] = build_review_flow(script["review_status"])
             version = save_script_version(

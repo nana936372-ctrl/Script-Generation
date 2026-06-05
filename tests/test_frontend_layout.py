@@ -301,17 +301,23 @@ def test_export_table_keeps_readable_columns_on_small_screens():
     assert 'id="exportTimeStatus"' in html
     assert 'data-export-format="CSV"' in html
     assert 'data-export-format="Excel"' in html
+    assert 'data-export-select-all' in html
+    assert "<span>导出</span>" in html
     assert "<th>生成时间</th>" in html
     assert "<th>保存时间</th>" in html
     assert "<th>最近导出</th>" in html
     assert "exportLinks" in js
+    assert "selectedExportIds" in js
+    assert "data-export-id" in js
+    assert "buildExportHref" in js
+    assert "syncExportSelection" in js
     assert "lastExportedAt" in js
     assert "formatDateTime" in js
     assert "updateExportTimeStatus" in js
     assert "item.generated_at || item.created_at" in js
     assert "item.saved_at || item.created_at" in js
-    assert "colspan=\"10\"" in html
-    assert "colspan=\\\"10\\\"" in js
+    assert "colspan=\"11\"" in html
+    assert "colspan=\\\"11\\\"" in js
 
     assert ".table-panel {" in css
     table_panel_rule = re.search(r"\.table-panel\s*\{(?P<body>.*?)\n\}", css, re.S)
@@ -326,9 +332,28 @@ def test_export_table_keeps_readable_columns_on_small_screens():
     assert ".table-wrap table" in css
     table_rule = re.search(r"\.table-wrap table\s*\{(?P<body>.*?)\n\}", css, re.S)
     assert table_rule is not None
-    assert "min-width: 1160px;" in table_rule.group("body")
+    assert "min-width: 1240px;" in table_rule.group("body")
+    assert ".export-check" in css
     assert ".export-time-status" in css
     assert ".time-cell" in css
+
+
+def test_batch_generation_preserves_selected_topic_and_stable_switcher_layout():
+    css = (ROOT / "web" / "styles.css").read_text(encoding="utf-8")
+    js = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+
+    assert "getDefaultBatchActiveIndex" in js
+    assert "options.activeIndex ?? getDefaultBatchActiveIndex(topics)" in js
+    assert "normalizeGeneratedScript" in js
+    assert "选择此脚本" in js
+    assert "script-tabs-row" in js
+
+    batch_rule = re.search(r"\.script-batch-strip\s*\{(?P<body>.*?)\n\}", css, re.S)
+    assert batch_rule is not None
+    assert "grid-template-columns: minmax(0, 1fr) auto;" in batch_rule.group("body")
+    assert "grid-template-rows: auto auto;" in batch_rule.group("body")
+    assert ".script-tabs-row" in css
+    assert ".script-tabs-row {" in css
 
 
 def test_task_card_summary_includes_content_type():

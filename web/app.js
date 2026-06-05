@@ -34,6 +34,7 @@ const changeSummary = document.querySelector("#changeSummary");
 const savedTableBody = document.querySelector("#savedTableBody");
 const exportTimeStatus = document.querySelector("#exportTimeStatus");
 const exportLinks = document.querySelectorAll("[data-export-format]");
+const exportSelectAll = document.querySelector("[data-export-select-all]");
 const campaignForm = document.querySelector("#campaignForm");
 const campaignScriptSelect = document.querySelector("#campaignScriptSelect");
 
@@ -48,6 +49,7 @@ let selectedScriptIndex = -1;
 let currentScript = null;
 let currentQualityScore = null;
 let savedScripts = [];
+let selectedExportIds = new Set();
 let lastExportedAt = "";
 
 const stepPages = {
@@ -130,10 +132,35 @@ reviewStatus.addEventListener("change", () => {
 
 exportLinks.forEach((link) => {
   link.addEventListener("click", () => {
+    link.href = buildExportHref(link.getAttribute("href") || "");
     lastExportedAt = new Date().toISOString();
     updateExportTimeStatus(link.dataset.exportFormat || "");
     renderSavedTable(savedScripts);
   });
+});
+
+savedTableBody.addEventListener("change", (event) => {
+  const checkbox = event.target.closest("[data-export-id]");
+  if (!checkbox) {
+    return;
+  }
+  const scriptId = checkbox.dataset.exportId || "";
+  if (!scriptId) {
+    return;
+  }
+  if (checkbox.checked) {
+    selectedExportIds.add(scriptId);
+  } else {
+    selectedExportIds.delete(scriptId);
+  }
+  syncExportSelection();
+});
+
+exportSelectAll?.addEventListener("change", () => {
+  selectedExportIds = exportSelectAll.checked
+    ? new Set(savedScripts.map((item) => String(item.id || "")).filter(Boolean))
+    : new Set();
+  renderSavedTable(savedScripts);
 });
 
 document.querySelectorAll("[data-step-target]").forEach((button) => {
@@ -489,6 +516,8 @@ campaignForm.addEventListener("submit", async (event) => {
 async function loadSavedScripts() {
   const data = await getJson("/api/scripts");
   savedScripts = data.items || [];
+  const savedIds = new Set(savedScripts.map((item) => String(item.id || "")).filter(Boolean));
+  selectedExportIds = new Set([...selectedExportIds].filter((id) => savedIds.has(id)));
   renderSavedTable(savedScripts);
   renderScriptLibrary(savedScripts);
   updateCampaignScriptOptions(savedScripts);
@@ -502,6 +531,9 @@ async function loadPerformanceInsights() {
 function collectBrief() {
   const brief = Object.fromEntries(new FormData(briefForm).entries());
   const task = Object.fromEntries(new FormData(taskForm).entries());
+  brief.task_id = currentTask?.id || "";
+  brief.task_name = currentTask?.task_name || task.task_name || "";
+  brief.reviewer = currentTask?.reviewer || task.reviewer || "";
   brief.platform = task.platform || "抖音";
   brief.business_goal = task.business_goal || "转化";
   brief.content_type = task.content_type || "口播";
@@ -604,51 +636,53 @@ function renderScriptWorkspace(scripts, activeIndex) {
 function renderScriptSwitcher(scripts, activeIndex) {
   const activeScript = scripts[activeIndex] || {};
   const isSelected = selectedScriptIndex === activeIndex;
-  const useCompactSelect = scripts.length > 4;
+  const useCompactSelect = scripts.length > 8;
   return `
     <div class="script-batch-strip" aria-label="批量生成脚本列表">
-      <div>
+      <div class="script-batch-meta">
         <span class="badge">${scripts.length > 1 ? "批量生成" : "脚本选择"}</span>
         <strong>${scripts.length} 条脚本</strong>
       </div>
-      ${scripts.length > 1 ? `
-        ${useCompactSelect ? `
-          <label class="script-select-wrap">
-            <span>当前浏览</span>
-            <select data-script-select aria-label="选择脚本">
-              ${scripts.map((script, index) => `
-                <option value="${index}" ${index === activeIndex ? "selected" : ""}>
-                  ${index + 1}. ${escapeHtml(script.title || `脚本 ${index + 1}`)}${index === selectedScriptIndex ? "（已选择）" : ""}
-                </option>
-              `).join("")}
-            </select>
-          </label>
-        ` : `
-          <div class="script-tabs">
-            ${scripts.map((script, index) => `
-              <button
-                class="script-tab ${index === activeIndex ? "active" : ""} ${index === selectedScriptIndex ? "selected" : ""}"
-                type="button"
-                data-script-index="${index}"
-              >
-                <span>${index + 1}</span>
-                ${escapeHtml(script.title || `脚本 ${index + 1}`)}
-              </button>
-            `).join("")}
-          </div>
-        `}
-      ` : `
-        <div class="script-active-title">${escapeHtml(activeScript.title || "当前脚本")}</div>
-      `}
       <button class="secondary-button compact-button script-choose-button ${isSelected ? "selected" : ""}" type="button" data-choose-script>
         ${isSelected ? "已选择此脚本" : "选择此脚本"}
       </button>
+      <div class="script-tabs-row">
+        ${scripts.length > 1 ? `
+          ${useCompactSelect ? `
+            <label class="script-select-wrap">
+              <span>当前浏览</span>
+              <select data-script-select aria-label="选择脚本">
+                ${scripts.map((script, index) => `
+                  <option value="${index}" ${index === activeIndex ? "selected" : ""}>
+                    ${index + 1}. ${escapeHtml(script.title || `脚本 ${index + 1}`)}${index === selectedScriptIndex ? "（已选择）" : ""}
+                  </option>
+                `).join("")}
+              </select>
+            </label>
+          ` : `
+            <div class="script-tabs">
+              ${scripts.map((script, index) => `
+                <button
+                  class="script-tab ${index === activeIndex ? "active" : ""} ${index === selectedScriptIndex ? "selected" : ""}"
+                  type="button"
+                  data-script-index="${index}"
+                >
+                  <span>${index + 1}</span>
+                  ${escapeHtml(script.title || `脚本 ${index + 1}`)}
+                </button>
+              `).join("")}
+            </div>
+          `}
+        ` : `
+          <div class="script-active-title">${escapeHtml(activeScript.title || "当前脚本")}</div>
+        `}
+      </div>
     </div>
   `;
 }
 
 function setGeneratedScripts(scripts, activeIndex = 0) {
-  currentScripts = scripts.filter(Boolean);
+  currentScripts = scripts.filter(Boolean).map((script, index) => normalizeGeneratedScript(script, index));
   currentScriptIndex = currentScripts.length ? Math.max(0, Math.min(activeIndex, currentScripts.length - 1)) : -1;
   if (selectedScriptIndex >= currentScripts.length) {
     selectedScriptIndex = -1;
@@ -667,6 +701,51 @@ function setGeneratedScripts(scripts, activeIndex = 0) {
   updateQualityPanelForCurrentScript();
   updateReviewFlowHint();
   updateReviewChecklist();
+}
+
+function normalizeGeneratedScript(script, index) {
+  const topic = script.topic || currentTopics[index] || selectedTopic || {};
+  const title = firstText(script.title, topic.title, `脚本 ${index + 1}`);
+  const hook = firstText(script.hook, topic.hook, "先从用户真实痛点切入。");
+  const spokenScript = firstText(
+    script.spoken_script,
+    `${hook}\n围绕“${firstText(topic.angle, "脚本方向")}”展开，讲清楚产品卖点和使用场景，再用已确认信息完成转化。`
+  );
+  return {
+    ...script,
+    title,
+    hook,
+    spoken_script: spokenScript,
+    topic,
+    storyboard: listOrFallback(script.storyboard, [
+      { time: "0-3s", visual: "人物口播开场", note: "先抛出用户痛点" },
+      { time: "3-10s", visual: "展示产品和使用场景", note: "解释核心卖点" }
+    ]),
+    subtitle_points: listOrFallback(script.subtitle_points, [hook, title]),
+    material_suggestions: listOrFallback(script.material_suggestions, ["产品实拍", "使用场景画面"]),
+    risk_notes: listOrFallback(script.risk_notes, ["避免夸大、绝对化、医疗化表达"]),
+    needs_confirmation: Array.isArray(script.needs_confirmation) ? script.needs_confirmation : []
+  };
+}
+
+function firstText(...values) {
+  for (const value of values) {
+    const text = String(value || "").trim();
+    if (text) {
+      return text;
+    }
+  }
+  return "";
+}
+
+function listOrFallback(value, fallback) {
+  if (Array.isArray(value) && value.some(Boolean)) {
+    return value.filter(Boolean);
+  }
+  if (value) {
+    return [value];
+  }
+  return fallback;
 }
 
 function selectGeneratedScript(index, options = {}) {
@@ -767,7 +846,7 @@ async function generateBatchScripts(options = {}) {
       topics
     });
     selectedScriptIndex = -1;
-    setGeneratedScripts(data.scripts || [], options.activeIndex || 0);
+    setGeneratedScripts(data.scripts || [], options.activeIndex ?? getDefaultBatchActiveIndex(topics));
     if (!currentScript) {
       toast("批量生成未返回脚本");
       return;
@@ -781,6 +860,22 @@ async function generateBatchScripts(options = {}) {
   } finally {
     setButtonBusy(button, false, doneLabel);
   }
+}
+
+function getDefaultBatchActiveIndex(topics) {
+  if (!selectedTopic || !Array.isArray(topics)) {
+    return 0;
+  }
+  const selectedId = String(selectedTopic.id || selectedTopic.source_topic_id || "");
+  const selectedTitle = String(selectedTopic.title || "");
+  const matchedIndex = topics.findIndex((topic) => {
+    if (!topic) {
+      return false;
+    }
+    const topicId = String(topic.id || topic.source_topic_id || "");
+    return (selectedId && topicId === selectedId) || (selectedTitle && topic.title === selectedTitle);
+  });
+  return matchedIndex >= 0 ? matchedIndex : 0;
 }
 
 async function regenerateCurrentScriptInBatch(button, labels = {}) {
@@ -1471,23 +1566,60 @@ function escapeRegExp(value) {
 
 function renderSavedTable(items) {
   if (!items.length) {
-    savedTableBody.innerHTML = "<tr><td colspan=\"10\" class=\"muted\">暂无保存脚本</td></tr>";
+    savedTableBody.innerHTML = "<tr><td colspan=\"11\" class=\"muted\">暂无保存脚本</td></tr>";
+    syncExportSelection();
     return;
   }
-  savedTableBody.innerHTML = items.slice().reverse().map((item) => `
-    <tr>
-      <td>${escapeHtml(item.product_name || "")}</td>
-      <td>${escapeHtml(item.platform || "")}</td>
-      <td>${escapeHtml(item.title || "")}</td>
-      <td>${escapeHtml(item.hook || "")}</td>
-      <td class="time-cell">${escapeHtml(formatDateTime(item.generated_at || item.created_at))}</td>
-      <td class="time-cell">${escapeHtml(formatDateTime(item.saved_at || item.created_at))}</td>
-      <td>${renderQualityCell(item)}</td>
-      <td>${escapeHtml(item.review_status || "")}</td>
-      <td>${item.version_no ? `v${escapeHtml(item.version_no)}` : escapeHtml(item.id || "")}</td>
-      <td class="time-cell">${escapeHtml(lastExportedAt ? formatDateTime(lastExportedAt) : "暂无")}</td>
-    </tr>
-  `).join("");
+  savedTableBody.innerHTML = items.slice().reverse().map((item) => {
+    const scriptId = String(item.id || "");
+    return `
+      <tr>
+        <td class="export-check">
+          <input
+            type="checkbox"
+            data-export-id="${escapeHtml(scriptId)}"
+            aria-label="选择导出 ${escapeHtml(item.title || scriptId || "脚本")}"
+            ${scriptId ? "" : "disabled"}
+            ${scriptId && selectedExportIds.has(scriptId) ? "checked" : ""}
+          />
+        </td>
+        <td>${escapeHtml(item.product_name || "")}</td>
+        <td>${escapeHtml(item.platform || "")}</td>
+        <td>${escapeHtml(item.title || "")}</td>
+        <td>${escapeHtml(item.hook || "")}</td>
+        <td class="time-cell">${escapeHtml(formatDateTime(item.generated_at || item.created_at))}</td>
+        <td class="time-cell">${escapeHtml(formatDateTime(item.saved_at || item.created_at))}</td>
+        <td>${renderQualityCell(item)}</td>
+        <td>${escapeHtml(item.review_status || "")}</td>
+        <td>${item.version_no ? `v${escapeHtml(item.version_no)}` : escapeHtml(item.id || "")}</td>
+        <td class="time-cell">${escapeHtml(lastExportedAt ? formatDateTime(lastExportedAt) : "暂无")}</td>
+      </tr>
+    `;
+  }).join("");
+  syncExportSelection();
+}
+
+function syncExportSelection() {
+  const availableIds = savedScripts.map((item) => String(item.id || "")).filter(Boolean);
+  const selectedCount = availableIds.filter((id) => selectedExportIds.has(id)).length;
+  if (exportSelectAll) {
+    exportSelectAll.checked = availableIds.length > 0 && selectedCount === availableIds.length;
+    exportSelectAll.indeterminate = selectedCount > 0 && selectedCount < availableIds.length;
+  }
+}
+
+function buildExportHref(baseHref) {
+  const cleanHref = baseHref.split("?")[0];
+  const ids = [...new Set(
+    savedScripts
+      .map((item) => String(item.id || ""))
+      .filter((id) => id && selectedExportIds.has(id))
+  )];
+  if (!ids.length) {
+    return cleanHref;
+  }
+  const params = new URLSearchParams({ ids: ids.join(",") });
+  return `${cleanHref}?${params.toString()}`;
 }
 
 function updateExportTimeStatus(format = "") {
@@ -1811,7 +1943,7 @@ updateReviewFlowHint();
 updateReviewChecklist();
 
 loadSavedScripts().catch(() => {
-  savedTableBody.innerHTML = "<tr><td colspan=\"10\" class=\"muted\">脚本库加载失败</td></tr>";
+  savedTableBody.innerHTML = "<tr><td colspan=\"11\" class=\"muted\">脚本库加载失败</td></tr>";
 });
 loadPerformanceInsights().catch(() => {
   feedbackResult.innerHTML = "数据复盘加载失败";
