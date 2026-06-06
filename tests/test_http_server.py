@@ -7,6 +7,7 @@ from unittest.mock import patch
 from src.demo_core import ProductBrief
 from src.http_server import DemoRequestHandler, ThreadingHTTPServer
 from src.http_server import _attach_script_context
+from src.http_server import _sort_scripts_for_saved_view
 
 
 class HttpServerErrorHandlingTests(unittest.TestCase):
@@ -32,6 +33,37 @@ class HttpServerErrorHandlingTests(unittest.TestCase):
             server.shutdown()
             server.server_close()
             thread.join(timeout=3)
+
+
+class SavedScriptOrderingTests(unittest.TestCase):
+    def test_saved_view_orders_by_effective_saved_time_descending(self):
+        scripts = [
+            {
+                "id": "draft-newer",
+                "generated_at": "2026-06-06T15:24:47+08:00",
+                "created_at": "2026-06-06T15:24:47+08:00",
+                "updated_at": "2026-06-06T15:30:00+08:00",
+            },
+            {
+                "id": "reviewed-latest",
+                "generated_at": "2026-06-06T15:24:25+08:00",
+                "saved_at": "2026-06-06T15:27:41+08:00",
+            },
+            {
+                "id": "draft-older",
+                "generated_at": "2026-06-06T15:23:57+08:00",
+                "created_at": "2026-06-06T15:23:57+08:00",
+            },
+            {
+                "id": "reviewed-earlier",
+                "generated_at": "2026-06-06T15:20:00+08:00",
+                "saved_at": "2026-06-06T15:24:00+08:00",
+            },
+        ]
+
+        sorted_ids = [script["id"] for script in _sort_scripts_for_saved_view(scripts)]
+
+        self.assertEqual(sorted_ids, ["reviewed-latest", "draft-newer", "reviewed-earlier", "draft-older"])
 
 
 class ScriptContextTests(unittest.TestCase):

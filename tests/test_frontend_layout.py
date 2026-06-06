@@ -367,6 +367,9 @@ def test_export_table_keeps_readable_columns_on_small_screens():
     assert "updateExportTimeStatus" in js
     assert "item.generated_at || item.created_at" in js
     assert "item.saved_at || item.created_at" in js
+    assert "sortSavedScriptsForView" in js
+    assert "scriptSavedSortTime" in js
+    assert "items.slice().reverse()" not in js
     assert "colspan=\"11\"" in html
     assert "colspan=\\\"11\\\"" in js
 

@@ -515,7 +515,7 @@ campaignForm.addEventListener("submit", async (event) => {
 
 async function loadSavedScripts() {
   const data = await getJson("/api/scripts");
-  savedScripts = data.items || [];
+  savedScripts = sortSavedScriptsForView(data.items || []);
   const savedIds = new Set(savedScripts.map((item) => String(item.id || "")).filter(Boolean));
   selectedExportIds = new Set([...selectedExportIds].filter((id) => savedIds.has(id)));
   renderSavedTable(savedScripts);
@@ -829,6 +829,7 @@ function mergeScoredScriptIntoSavedList({ script } = {}) {
   } else {
     savedScripts = [...savedScripts, script];
   }
+  savedScripts = sortSavedScriptsForView(savedScripts);
   renderSavedTable(savedScripts);
   renderScriptLibrary(savedScripts);
   updateCampaignScriptOptions(savedScripts);
@@ -1671,7 +1672,7 @@ function renderSavedTable(items) {
     syncExportSelection();
     return;
   }
-  savedTableBody.innerHTML = items.slice().reverse().map((item) => {
+  savedTableBody.innerHTML = sortSavedScriptsForView(items).map((item) => {
     const scriptId = String(item.id || "");
     return `
       <tr>
@@ -1698,6 +1699,16 @@ function renderSavedTable(items) {
     `;
   }).join("");
   syncExportSelection();
+}
+
+function sortSavedScriptsForView(items) {
+  return items.slice().sort((a, b) => scriptSavedSortTime(b) - scriptSavedSortTime(a));
+}
+
+function scriptSavedSortTime(item = {}) {
+  const value = item.saved_at || item.generated_at || item.created_at || "";
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? 0 : parsed;
 }
 
 function syncExportSelection() {
@@ -1815,8 +1826,9 @@ function updateCampaignScriptOptions(items = []) {
     return;
   }
 
-  const selectedId = currentScript?.id || items[items.length - 1]?.id || "";
-  campaignScriptSelect.innerHTML = items.slice().reverse().map((item) => `
+  const orderedItems = sortSavedScriptsForView(items);
+  const selectedId = currentScript?.id || orderedItems[0]?.id || "";
+  campaignScriptSelect.innerHTML = orderedItems.map((item) => `
     <option value="${escapeHtml(item.id || "")}" ${item.id === selectedId ? "selected" : ""}>
       ${escapeHtml(item.title || item.id || "未命名脚本")}
     </option>

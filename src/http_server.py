@@ -269,6 +269,37 @@ def _filter_scripts_for_export(scripts: list[dict], selected_ids: set[str]) -> l
     return filtered
 
 
+def _sort_scripts_for_saved_view(scripts: list[dict]) -> list[dict]:
+    indexed_scripts = list(enumerate(scripts))
+    indexed_scripts.sort(
+        key=lambda item: (_parse_script_sort_time(_script_saved_sort_value(item[1])), item[0]),
+        reverse=True,
+    )
+    return [script for _index, script in indexed_scripts]
+
+
+def _script_saved_sort_value(script: dict) -> str:
+    return _first_non_empty(
+        script.get("saved_at"),
+        script.get("generated_at"),
+        script.get("created_at"),
+    )
+
+
+def _parse_script_sort_time(value: str) -> float:
+    text = str(value or "").strip()
+    if not text:
+        return 0.0
+    try:
+        normalized = text.replace("Z", "+00:00")
+        parsed = datetime.fromisoformat(normalized)
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.timestamp()
+    except ValueError:
+        return 0.0
+
+
 class DemoRequestHandler(BaseHTTPRequestHandler):
     server_version = "AIScriptDemo/1.0"
 
@@ -297,7 +328,7 @@ class DemoRequestHandler(BaseHTTPRequestHandler):
                 self._send_json({"items": load_topics(TOPICS_FILE)})
                 return
             if parsed.path == "/api/scripts":
-                self._send_json({"items": load_scripts(DATA_FILE)})
+                self._send_json({"items": _sort_scripts_for_saved_view(load_scripts(DATA_FILE))})
                 return
             if parsed.path == "/api/versions":
                 self._send_json({"items": load_versions(VERSIONS_FILE)})
@@ -318,7 +349,10 @@ class DemoRequestHandler(BaseHTTPRequestHandler):
             if parsed.path == "/api/export.csv":
                 exported_at = _now_iso()
                 selected_ids = _export_selected_ids(parsed.query)
-                scripts_to_export = _filter_scripts_for_export(load_scripts(DATA_FILE), selected_ids)
+                scripts_to_export = _filter_scripts_for_export(
+                    _sort_scripts_for_saved_view(load_scripts(DATA_FILE)),
+                    selected_ids,
+                )
                 scripts = mark_scripts_exported(scripts_to_export, DATA_FILE, exported_at)
                 self._send_text(
                     scripts_to_csv(scripts, exported_at=exported_at),
@@ -329,7 +363,10 @@ class DemoRequestHandler(BaseHTTPRequestHandler):
             if parsed.path == "/api/export.xls":
                 exported_at = _now_iso()
                 selected_ids = _export_selected_ids(parsed.query)
-                scripts_to_export = _filter_scripts_for_export(load_scripts(DATA_FILE), selected_ids)
+                scripts_to_export = _filter_scripts_for_export(
+                    _sort_scripts_for_saved_view(load_scripts(DATA_FILE)),
+                    selected_ids,
+                )
                 scripts = mark_scripts_exported(scripts_to_export, DATA_FILE, exported_at)
                 self._send_text(
                     scripts_to_excel_xml(scripts, exported_at=exported_at),
