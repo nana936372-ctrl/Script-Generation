@@ -717,10 +717,7 @@ function normalizeGeneratedScript(script, index) {
     hook,
     spoken_script: spokenScript,
     topic,
-    storyboard: listOrFallback(script.storyboard, [
-      { time: "0-3s", visual: "人物口播开场", note: "先抛出用户痛点" },
-      { time: "3-10s", visual: "展示产品和使用场景", note: "解释核心卖点" }
-    ]),
+    storyboard: listOrFallback(script.storyboard, buildContextualStoryboardFallback(script, topic)),
     subtitle_points: listOrFallback(script.subtitle_points, [hook, title]),
     material_suggestions: listOrFallback(script.material_suggestions, ["产品实拍", "使用场景画面"]),
     risk_notes: listOrFallback(script.risk_notes, ["避免夸大、绝对化、医疗化表达"]),
@@ -746,6 +743,103 @@ function listOrFallback(value, fallback) {
     return [value];
   }
   return fallback;
+}
+
+function buildContextualStoryboardFallback(script = {}, topic = {}) {
+  const context = contextPhrasesFromScript(script, topic);
+  return [
+    {
+      time: "0-3s",
+      visual: `字幕打出“${context.title}”，镜头切到“${context.pain}”的真实状态`,
+      note: `用 Hook “${context.hook}”切入，先让目标用户看到自己的问题`
+    },
+    {
+      time: "3-10s",
+      visual: `${context.scenario}场景下展示${context.product}质地、起泡或冲洗细节`,
+      note: `把“${context.sellingPoint}”转成可观察的使用过程`
+    },
+    {
+      time: "10-20s",
+      visual: `围绕“${context.benefit}”补充特写、字幕或已确认素材`,
+      note: `证明材料使用“${context.proof}”，没有素材就保留待确认`
+    },
+    {
+      time: "20-30s",
+      visual: `回到${context.product}包装、页面信息或评论区反馈，字幕收束行动入口`,
+      note: context.cta
+    }
+  ];
+}
+
+function contextPhrasesFromScript(script = {}, topic = {}) {
+  const brief = currentBrief || {};
+  const decomposition = script.decomposition_snapshot || currentDecomposition || {};
+  return {
+    title: compactPhrase(firstText(script.title, topic.title, `${brief.product_name || "产品"}脚本`), 22),
+    hook: compactPhrase(firstText(script.hook, topic.hook, "先讲一个真实使用问题"), 28),
+    pain: compactPhrase(firstListText(decomposition.pain_points, brief.target_user, topic.title, "目标用户痛点"), 28),
+    scenario: compactPhrase(firstListText(decomposition.scenarios, brief.usage_scenario, "真实使用"), 20),
+    benefit: compactPhrase(firstListText(decomposition.benefits, brief.selling_points, "核心卖点"), 28),
+    proof: compactPhrase(firstListText(decomposition.proof_points, brief.proof_material, "已确认证明材料"), 24),
+    product: compactPhrase(firstText(script.product_name, brief.product_name, "产品"), 16),
+    sellingPoint: compactPhrase(firstText(brief.selling_points, script.selling_points, "核心卖点"), 32),
+    cta: ctaNoteForGoal(brief.business_goal || script.business_goal || "转化")
+  };
+}
+
+function firstListText(value, ...fallbacks) {
+  if (Array.isArray(value)) {
+    const found = value.map((item) => String(item || "").trim()).find(Boolean);
+    if (found) {
+      return found;
+    }
+  }
+  return firstText(...fallbacks);
+}
+
+function compactPhrase(value, maxLength) {
+  const text = firstText(value);
+  if (text.length <= maxLength) {
+    return text;
+  }
+  return `${text.slice(0, Math.max(1, maxLength - 1))}...`;
+}
+
+function ctaNoteForGoal(goal = "") {
+  if (goal === "种草") {
+    return "用真实体验和适合人群收尾，保留自然推荐语气";
+  }
+  if (goal === "直播引流") {
+    return "自然提示直播间承接，不虚构价格、库存或开播时间";
+  }
+  if (goal === "品牌曝光") {
+    return "强化品牌记忆点和关注动作，不做强硬购买催促";
+  }
+  return "给出明确但不过度承诺的页面或购买行动引导";
+}
+
+function mergeScoredScriptIntoSavedList({ script } = {}) {
+  if (!script?.id) {
+    return;
+  }
+  const scriptId = String(script.id);
+  const existingIndex = savedScripts.findIndex((item) => String(item.id || "") === scriptId);
+  if (existingIndex >= 0) {
+    savedScripts = savedScripts.map((item, index) => (index === existingIndex ? { ...item, ...script } : item));
+  } else {
+    savedScripts = [...savedScripts, script];
+  }
+  renderSavedTable(savedScripts);
+  renderScriptLibrary(savedScripts);
+  updateCampaignScriptOptions(savedScripts);
+}
+
+async function refreshSavedScriptsAfterScoring() {
+  try {
+    await loadSavedScripts();
+  } catch (error) {
+    toast(`质量评分已保存，但脚本库刷新失败：${error.message}`);
+  }
 }
 
 function selectGeneratedScript(index, options = {}) {
@@ -1059,9 +1153,16 @@ async function scoreCurrentScript(options = {}) {
     currentScript.spoken_script = scriptEditor.value || currentScript.spoken_script || "";
     const data = await postJson("/api/quality-score", { script: currentScript });
     currentQualityScore = data.quality_score;
-    currentScript.quality_score = currentQualityScore;
+    const savedScript = data.script;
+    currentScript = {
+      ...currentScript,
+      ...(savedScript || {}),
+      quality_score: currentQualityScore
+    };
     syncCurrentScriptState();
     setResultContent(qualityResult, renderQualityScore(currentQualityScore, currentScript));
+    mergeScoredScriptIntoSavedList({ script: savedScript || currentScript });
+    await refreshSavedScriptsAfterScoring();
     if (options.updateProgress !== false) {
       updateStatus("质量评分完成", 5);
     }
@@ -1939,12 +2040,15 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
+function renderScriptLibraryLoadFailure(error) {
+  const message = escapeHtml(error?.message || "请求失败");
+  savedTableBody.innerHTML = `<tr><td colspan="11" class="muted">脚本库加载失败：${message}</td></tr>`;
+}
+
 updateReviewFlowHint();
 updateReviewChecklist();
 
-loadSavedScripts().catch(() => {
-  savedTableBody.innerHTML = "<tr><td colspan=\"11\" class=\"muted\">脚本库加载失败</td></tr>";
-});
+loadSavedScripts().catch(renderScriptLibraryLoadFailure);
 loadPerformanceInsights().catch(() => {
   feedbackResult.innerHTML = "数据复盘加载失败";
 });

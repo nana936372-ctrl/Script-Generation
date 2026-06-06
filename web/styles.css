@@ -497,7 +497,12 @@ button:disabled {
 }
 
 #reviewCard {
-  overflow-y: auto;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+}
+
+#reviewCard.active {
+  display: grid;
 }
 
 .card-title-row,
@@ -546,6 +551,42 @@ button:disabled {
 .review-checklist {
   display: grid;
   min-height: 0;
+}
+
+.review-editor-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 340px);
+  gap: 12px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.review-editor-main {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.script-editor-field {
+  min-height: 0;
+}
+
+#scriptEditor {
+  height: clamp(180px, 32vh, 260px);
+  min-height: 160px;
+  overflow-y: auto;
+}
+
+#versionResult {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.review-version-panel {
+  align-content: start;
 }
 
 .review-check-card {
@@ -2052,6 +2093,7 @@ th {
   .task-overview,
   .task-summary-stack,
   .quality-notes,
+  .review-editor-grid,
   .review-check-grid,
   .library-list,
   .feedback-grid {

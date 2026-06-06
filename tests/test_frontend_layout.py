@@ -62,6 +62,29 @@ def test_workflow_cards_use_paged_workbench():
     assert "node.className = \"result-content\";" in js
 
 
+def test_task_form_matches_prd_platform_goal_and_content_options():
+    html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+    js = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+
+    assert '<select name="platform">' in html
+    assert '<input id="platformInput" name="platform" type="hidden"' not in html
+    assert 'class="select-like multi-select"' not in html
+    assert 'data-platform-menu' not in html
+    assert 'data-platform-value=' not in html
+    assert '<select name="platform" multiple' not in html
+    for platform in ["抖音", "小红书", "视频号", "快手", "B站"]:
+        assert f"<option>{platform}</option>" in html
+    for goal in ["转化", "种草", "直播引流", "品牌曝光"]:
+        assert f"<option>{goal}</option>" in html
+    for content_type in ["口播", "测评", "对比", "剧情", "直播切片"]:
+        assert f"<option>{content_type}</option>" in html
+
+    assert "platformInput" not in js
+    assert "platformOptions" not in js
+    assert "syncPlatformSelect" not in js
+    assert "togglePlatformMenu" not in js
+
+
 def test_generated_sections_use_fixed_browsable_modules():
     css = (ROOT / "web" / "styles.css").read_text(encoding="utf-8")
     js = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
@@ -152,6 +175,14 @@ def test_quality_library_and_feedback_modules_are_exposed():
     assert ".score-grid" in css
     assert ".library-list" in css
     assert ".metric-form" in css
+
+
+def test_quality_score_updates_saved_table_immediately():
+    js = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+
+    assert "refreshSavedScriptsAfterScoring" in js
+    assert "await refreshSavedScriptsAfterScoring();" in js
+    assert "script: savedScript || currentScript" in js
 
 
 def test_workflow_phase_labels_and_task_card_without_readiness_panel():
@@ -252,6 +283,26 @@ def test_review_status_flow_and_regenerate_action_are_exposed():
     assert ".review-actions" in css
 
 
+def test_review_editor_layout_prevents_checklist_textarea_overlap():
+    html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+    css = (ROOT / "web" / "styles.css").read_text(encoding="utf-8")
+
+    assert 'class="review-editor-grid"' in html
+    assert 'class="review-editor-main"' in html
+    assert "review-version-panel" in html
+    review_card_rule = re.search(r"#reviewCard\s*\{(?P<body>.*?)\n\}", css, re.S)
+    assert review_card_rule is not None
+    assert "grid-template-rows:" in review_card_rule.group("body")
+    assert "overflow: hidden;" in review_card_rule.group("body")
+    editor_rule = re.search(r"\.review-editor-main\s*\{(?P<body>.*?)\n\}", css, re.S)
+    assert editor_rule is not None
+    assert "min-height: 0;" in editor_rule.group("body")
+    textarea_rule = re.search(r"#scriptEditor\s*\{(?P<body>.*?)\n\}", css, re.S)
+    assert textarea_rule is not None
+    assert "height:" in textarea_rule.group("body")
+    assert "overflow-y: auto;" in textarea_rule.group("body")
+
+
 def test_p0_batch_generation_and_risk_highlight_are_exposed():
     html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
     css = (ROOT / "web" / "styles.css").read_text(encoding="utf-8")
@@ -338,6 +389,14 @@ def test_export_table_keeps_readable_columns_on_small_screens():
     assert ".time-cell" in css
 
 
+def test_script_library_load_failure_shows_backend_error():
+    js = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+
+    assert "renderScriptLibraryLoadFailure" in js
+    assert "脚本库加载失败：" in js
+    assert "error?.message" in js
+
+
 def test_batch_generation_preserves_selected_topic_and_stable_switcher_layout():
     css = (ROOT / "web" / "styles.css").read_text(encoding="utf-8")
     js = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
@@ -360,6 +419,15 @@ def test_task_card_summary_includes_content_type():
     js = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
 
     assert '["内容形式", currentTask.content_type]' in js
+
+
+def test_frontend_script_fallback_storyboard_uses_task_context():
+    js = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+
+    assert "buildContextualStoryboardFallback" in js
+    assert "contextPhrasesFromScript" in js
+    assert "人物口播开场" not in js
+    assert "展示产品和使用场景" not in js
 
 
 def test_topic_badges_have_hover_explanations():

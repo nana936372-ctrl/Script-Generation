@@ -368,9 +368,29 @@ class DemoCoreTests(unittest.TestCase):
         self.assertGreaterEqual(score["total_score"], 70)
         self.assertIn(score["grade"], {"A", "B", "C", "D"})
         self.assertIn("dimensions", score)
-        self.assertEqual(len(score["dimensions"]), 5)
+        self.assertEqual(len(score["dimensions"]), 6)
         self.assertIn("go_live_ready", score)
         self.assertTrue(score["suggestions"])
+
+    def test_score_script_quality_uses_business_goal_specific_standard(self):
+        script = {
+            "title": "品牌故事脚本",
+            "hook": "为什么这个品牌一直强调温和清洁？",
+            "spoken_script": "用一个早晚洁面的真实场景，讲清楚品牌记忆点、品牌信任和长期价值。",
+            "storyboard": [{"time": "0-3s", "visual": "生活场景", "note": "建立品牌印象"}],
+            "subtitle_points": ["品牌记忆点", "温和清洁", "可信表达"],
+            "material_suggestions": ["品牌视觉", "产品实拍"],
+            "conversion_cta": "关注品牌故事，了解更多日常护理思路。",
+            "risk_notes": ["不夸大功效"],
+            "business_goal": "品牌曝光",
+        }
+
+        score = score_script_quality(script)
+        goal_dimension = next(item for item in score["dimensions"] if item["key"] == "business_goal")
+
+        self.assertEqual(goal_dimension["label"], "业务目标适配度")
+        self.assertIn("品牌曝光", goal_dimension["rationale"])
+        self.assertGreaterEqual(goal_dimension["score"], 10)
 
     def test_score_script_quality_reduces_compliance_when_risks_exist(self):
         script = generate_demo_script(

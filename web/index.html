@@ -66,6 +66,8 @@
                 <option>抖音</option>
                 <option>小红书</option>
                 <option>视频号</option>
+                <option>快手</option>
+                <option>B站</option>
               </select>
             </label>
 
@@ -297,28 +299,32 @@
                 <button class="secondary-button" id="reviewButton" type="button" disabled>保存审核版本</button>
               </div>
             </div>
-            <label>
-              <span>审核状态</span>
-              <select id="reviewStatus">
-                <option>小修后通过</option>
-                <option>通过</option>
-                <option>退回 AI 重写</option>
-                <option>废弃</option>
-              </select>
-            </label>
-            <div class="review-flow-hint" id="reviewFlowHint"></div>
-            <div class="review-checklist" id="reviewChecklist">
-              <div class="empty-mini">生成脚本后显示交付前检查。</div>
+            <div class="review-editor-grid">
+              <div class="review-editor-main">
+                <label>
+                  <span>审核状态</span>
+                  <select id="reviewStatus">
+                    <option>小修后通过</option>
+                    <option>通过</option>
+                    <option>退回 AI 重写</option>
+                    <option>废弃</option>
+                  </select>
+                </label>
+                <div class="review-flow-hint" id="reviewFlowHint"></div>
+                <div class="review-checklist" id="reviewChecklist">
+                  <div class="empty-mini">生成脚本后显示交付前检查。</div>
+                </div>
+                <label>
+                  <span>修改说明</span>
+                  <input id="changeSummary" value="人工编辑审核后保存" />
+                </label>
+                <label class="script-editor-field">
+                  <span>可编辑口播脚本</span>
+                  <textarea id="scriptEditor" rows="9" placeholder="生成脚本后可在这里人工修改"></textarea>
+                </label>
+              </div>
+              <aside id="versionResult" class="review-version-panel empty-mini">保存后生成脚本版本记录。</aside>
             </div>
-            <label>
-              <span>修改说明</span>
-              <input id="changeSummary" value="人工编辑审核后保存" />
-            </label>
-            <label>
-              <span>可编辑口播脚本</span>
-              <textarea id="scriptEditor" rows="9" placeholder="生成脚本后可在这里人工修改"></textarea>
-            </label>
-            <div id="versionResult" class="empty-mini">保存后生成脚本版本记录。</div>
           </article>
 
           <article class="step-card" id="libraryCard">

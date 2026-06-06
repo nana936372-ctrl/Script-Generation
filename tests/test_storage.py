@@ -67,6 +67,25 @@ class StorageTests(unittest.TestCase):
 
             self.assertEqual(load_scripts(path), [])
 
+    def test_load_scripts_collapses_jsonl_updates_to_latest_record(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "saved_scripts.jsonl"
+
+            first = save_script({"id": "script-1", "title": "初稿", "product_name": "洁面乳"}, path)
+            save_script(
+                {
+                    **first,
+                    "title": "评分后脚本",
+                    "quality_score": {"total_score": 93, "grade": "A"},
+                },
+                path,
+            )
+            records = load_scripts(path)
+
+            self.assertEqual(len(records), 1)
+            self.assertEqual(records[0]["title"], "评分后脚本")
+            self.assertEqual(records[0]["quality_score"]["total_score"], 93)
+
     def test_save_script_version_records_reviewed_version(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             path = Path(temp_dir) / "script_versions.jsonl"

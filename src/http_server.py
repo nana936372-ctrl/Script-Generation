@@ -132,7 +132,11 @@ def _attach_script_context(
             f"重点讲清楚：{brief.selling_points or '核心卖点'}。\n"
             "先还原用户场景，再说明产品适配点，最后用页面已确认信息完成转化引导。"
         )
-    record["storyboard"] = _usable_list(record.get("storyboard")) or _fallback_storyboard()
+    record["storyboard"] = _usable_list(record.get("storyboard")) or _fallback_storyboard(
+        brief,
+        topic,
+        decomposition,
+    )
     record["subtitle_points"] = _usable_list(record.get("subtitle_points")) or [record["hook"], brief.selling_points]
     record["material_suggestions"] = _usable_list(record.get("material_suggestions")) or [
         "产品实拍",
@@ -146,18 +150,49 @@ def _attach_script_context(
     record.setdefault("product_id", topic.get("product_id", decomposition.get("product_id", "")))
     record.setdefault("product_name", brief.product_name)
     record.setdefault("platform", brief.platform)
+    record.setdefault("business_goal", brief.business_goal)
+    record.setdefault("content_type", brief.content_type)
     record.setdefault("topic", topic)
     record.setdefault("decomposition_snapshot", decomposition)
     record.setdefault("status", "待审核")
     return record
 
 
-def _fallback_storyboard() -> list[dict[str, str]]:
+def _fallback_storyboard(
+    brief: ProductBrief,
+    topic: dict,
+    decomposition: dict,
+) -> list[dict[str, str]]:
+    title = _short_text(_first_non_empty(topic.get("title"), f"{brief.product_name}脚本"), 22)
+    hook = _short_text(_first_non_empty(topic.get("hook"), f"{brief.target_user}真实使用问题"), 28)
+    pain = _short_text(_first_list_text(decomposition.get("pain_points"), brief.target_user, title), 28)
+    scenario = _short_text(_first_list_text(decomposition.get("scenarios"), brief.usage_scenario, "真实使用场景"), 24)
+    benefit = _short_text(_first_list_text(decomposition.get("benefits"), brief.selling_points, "核心卖点"), 28)
+    proof = _short_text(_first_list_text(decomposition.get("proof_points"), brief.proof_material, "已确认证明材料"), 26)
+    product = _short_text(brief.product_name or "产品", 18)
+    selling_points = _short_text(brief.selling_points or benefit, 34)
+    cta = _cta_storyboard_note(brief.business_goal)
     return [
-        {"time": "0-3s", "visual": "人物口播开场", "note": "先抛出用户痛点"},
-        {"time": "3-10s", "visual": "展示产品和使用场景", "note": "解释核心卖点"},
-        {"time": "10-20s", "visual": "补充证明材料或反馈截图", "note": "只展示已确认素材"},
-        {"time": "20-30s", "visual": "回到口播和活动页", "note": "完成转化引导"},
+        {
+            "time": "0-3s",
+            "visual": f"字幕打出“{title}”，镜头聚焦“{pain}”的表情或手部动作",
+            "note": f"用 Hook “{hook}”切入，让痛点先被看见",
+        },
+        {
+            "time": "3-10s",
+            "visual": f"在“{scenario}”场景里展示{product}质地、起泡或冲洗细节",
+            "note": f"把“{selling_points}”转成可观察的使用过程",
+        },
+        {
+            "time": "10-20s",
+            "visual": f"插入“{proof}”或围绕“{benefit}”的细节镜头",
+            "note": "只使用已确认素材；没有素材时在待确认信息里标注",
+        },
+        {
+            "time": "20-30s",
+            "visual": f"回到{product}包装、活动页或评论区反馈，字幕收束到行动入口",
+            "note": cta,
+        },
     ]
 
 
@@ -167,6 +202,32 @@ def _usable_list(value: object) -> list:
     if value:
         return [value]
     return []
+
+
+def _first_list_text(value: object, *fallbacks: object) -> str:
+    if isinstance(value, list):
+        for item in value:
+            text = _first_non_empty(item)
+            if text:
+                return text
+    return _first_non_empty(*fallbacks)
+
+
+def _short_text(value: object, limit: int) -> str:
+    text = _first_non_empty(value)
+    if len(text) <= limit:
+        return text
+    return f"{text[:limit - 1]}..."
+
+
+def _cta_storyboard_note(business_goal: str) -> str:
+    if business_goal == "种草":
+        return "用真实体验和适合人群收尾，弱化硬广感"
+    if business_goal == "直播引流":
+        return "自然提示直播间承接，不虚构价格、库存或开播时间"
+    if business_goal == "品牌曝光":
+        return "强化品牌记忆点和关注动作，避免强转化压迫感"
+    return "给出明确但不过度承诺的页面/购买行动引导"
 
 
 def _save_ai_initial_script(script: dict) -> tuple[dict, dict]:
@@ -213,69 +274,72 @@ class DemoRequestHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
-        if parsed.path == "/api/health":
-            self._send_json(
-                {
-                    "storage_backend": "supabase" if using_supabase_storage() else "jsonl",
-                    "supabase_configured": supabase_configured(),
-                    "supabase_database_url": supabase_database_url_preview(),
-                }
-            )
-            return
-        if parsed.path == "/api/tasks":
-            self._send_json({"items": load_tasks(TASKS_FILE)})
-            return
-        if parsed.path == "/api/products":
-            self._send_json({"items": load_products(PRODUCTS_FILE)})
-            return
-        if parsed.path == "/api/decompositions":
-            self._send_json({"items": load_decompositions(DECOMPOSITIONS_FILE)})
-            return
-        if parsed.path == "/api/topics":
-            self._send_json({"items": load_topics(TOPICS_FILE)})
-            return
-        if parsed.path == "/api/scripts":
-            self._send_json({"items": load_scripts(DATA_FILE)})
-            return
-        if parsed.path == "/api/versions":
-            self._send_json({"items": load_versions(VERSIONS_FILE)})
-            return
-        if parsed.path == "/api/campaign-results":
-            self._send_json({"items": load_campaign_results(CAMPAIGN_RESULTS_FILE)})
-            return
-        if parsed.path == "/api/performance-insights":
-            self._send_json(
-                {
-                    "insights": analyze_performance_feedback(
-                        load_scripts(DATA_FILE),
-                        load_campaign_results(CAMPAIGN_RESULTS_FILE),
-                    )
-                }
-            )
-            return
-        if parsed.path == "/api/export.csv":
-            exported_at = _now_iso()
-            selected_ids = _export_selected_ids(parsed.query)
-            scripts_to_export = _filter_scripts_for_export(load_scripts(DATA_FILE), selected_ids)
-            scripts = mark_scripts_exported(scripts_to_export, DATA_FILE, exported_at)
-            self._send_text(
-                scripts_to_csv(scripts, exported_at=exported_at),
-                content_type="text/csv; charset=utf-8",
-                headers={"Content-Disposition": 'attachment; filename="ai-script-demo-export.csv"'},
-            )
-            return
-        if parsed.path == "/api/export.xls":
-            exported_at = _now_iso()
-            selected_ids = _export_selected_ids(parsed.query)
-            scripts_to_export = _filter_scripts_for_export(load_scripts(DATA_FILE), selected_ids)
-            scripts = mark_scripts_exported(scripts_to_export, DATA_FILE, exported_at)
-            self._send_text(
-                scripts_to_excel_xml(scripts, exported_at=exported_at),
-                content_type="application/vnd.ms-excel; charset=utf-8",
-                headers={"Content-Disposition": 'attachment; filename="ai-script-demo-export.xls"'},
-            )
-            return
-        self._serve_static(parsed.path)
+        try:
+            if parsed.path == "/api/health":
+                self._send_json(
+                    {
+                        "storage_backend": "supabase" if using_supabase_storage() else "jsonl",
+                        "supabase_configured": supabase_configured(),
+                        "supabase_database_url": supabase_database_url_preview(),
+                    }
+                )
+                return
+            if parsed.path == "/api/tasks":
+                self._send_json({"items": load_tasks(TASKS_FILE)})
+                return
+            if parsed.path == "/api/products":
+                self._send_json({"items": load_products(PRODUCTS_FILE)})
+                return
+            if parsed.path == "/api/decompositions":
+                self._send_json({"items": load_decompositions(DECOMPOSITIONS_FILE)})
+                return
+            if parsed.path == "/api/topics":
+                self._send_json({"items": load_topics(TOPICS_FILE)})
+                return
+            if parsed.path == "/api/scripts":
+                self._send_json({"items": load_scripts(DATA_FILE)})
+                return
+            if parsed.path == "/api/versions":
+                self._send_json({"items": load_versions(VERSIONS_FILE)})
+                return
+            if parsed.path == "/api/campaign-results":
+                self._send_json({"items": load_campaign_results(CAMPAIGN_RESULTS_FILE)})
+                return
+            if parsed.path == "/api/performance-insights":
+                self._send_json(
+                    {
+                        "insights": analyze_performance_feedback(
+                            load_scripts(DATA_FILE),
+                            load_campaign_results(CAMPAIGN_RESULTS_FILE),
+                        )
+                    }
+                )
+                return
+            if parsed.path == "/api/export.csv":
+                exported_at = _now_iso()
+                selected_ids = _export_selected_ids(parsed.query)
+                scripts_to_export = _filter_scripts_for_export(load_scripts(DATA_FILE), selected_ids)
+                scripts = mark_scripts_exported(scripts_to_export, DATA_FILE, exported_at)
+                self._send_text(
+                    scripts_to_csv(scripts, exported_at=exported_at),
+                    content_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": 'attachment; filename="ai-script-demo-export.csv"'},
+                )
+                return
+            if parsed.path == "/api/export.xls":
+                exported_at = _now_iso()
+                selected_ids = _export_selected_ids(parsed.query)
+                scripts_to_export = _filter_scripts_for_export(load_scripts(DATA_FILE), selected_ids)
+                scripts = mark_scripts_exported(scripts_to_export, DATA_FILE, exported_at)
+                self._send_text(
+                    scripts_to_excel_xml(scripts, exported_at=exported_at),
+                    content_type="application/vnd.ms-excel; charset=utf-8",
+                    headers={"Content-Disposition": 'attachment; filename="ai-script-demo-export.xls"'},
+                )
+                return
+            self._serve_static(parsed.path)
+        except Exception as error:
+            self._send_json({"error": str(error)}, status=500)
 
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
@@ -494,10 +558,11 @@ class DemoRequestHandler(BaseHTTPRequestHandler):
                 self._send_json({"error": "评分内容必须是脚本对象"}, status=400)
                 return
             quality_score = score_script_quality(script)
+            saved_script = None
             if script.get("id"):
                 script["quality_score"] = quality_score
-                save_script(script, DATA_FILE)
-            self._send_json({"quality_score": quality_score})
+                saved_script = save_script(script, DATA_FILE)
+            self._send_json({"quality_score": quality_score, "script": saved_script or script})
         except Exception as error:
             self._send_json({"error": str(error)}, status=500)
 

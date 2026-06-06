@@ -45,7 +45,7 @@ def load_topics(path: Path) -> list[dict[str, Any]]:
 
 
 def load_scripts(path: Path) -> list[dict[str, Any]]:
-    return _load_records("scripts", path)
+    return _latest_records_by_id(_load_records("scripts", path))
 
 
 def load_versions(path: Path) -> list[dict[str, Any]]:
@@ -154,6 +154,19 @@ def _load_jsonl_records(path: Path) -> list[dict[str, Any]]:
         if line.strip():
             records.append(json.loads(line))
     return records
+
+
+def _latest_records_by_id(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    latest: dict[str, dict[str, Any]] = {}
+    order: list[str] = []
+    for index, record in enumerate(records):
+        record_id = str(record.get("id") or "").strip()
+        key = record_id or f"__row_{index}"
+        if key in latest:
+            order.remove(key)
+        order.append(key)
+        latest[key] = record
+    return [latest[key] for key in order]
 
 
 def _append_jsonl_record(record: dict[str, Any], path: Path) -> None:

@@ -52,6 +52,41 @@ RISK_RULES = [
     ("猪刚鬣", "贬损表达", "脸部出油明显"),
 ]
 
+BUSINESS_GOAL_QUALITY_STANDARDS = {
+    "转化": {
+        "keyword_groups": [
+            ["点击", "购买", "下单", "了解", "页面", "行动"],
+            ["活动", "权益", "价格", "适合", "卖点"],
+            ["转化", "CTA", "引导"],
+        ],
+        "rationale": "转化目标需要购买理由、权益或页面承接、明确但合规的行动引导",
+    },
+    "种草": {
+        "keyword_groups": [
+            ["真实", "体验", "使用", "感受", "分享"],
+            ["细节", "质地", "场景", "适合", "人群"],
+            ["自然", "推荐", "种草", "日常"],
+        ],
+        "rationale": "种草目标需要真实体验、可信细节和弱硬广的自然推荐",
+    },
+    "直播引流": {
+        "keyword_groups": [
+            ["直播", "直播间", "开播", "今晚", "预约"],
+            ["权益", "福利", "适合", "先看", "承接"],
+            ["进直播间", "主播", "互动", "讲清楚"],
+        ],
+        "rationale": "直播引流目标需要直播间承接、人群筛选和权益提示",
+    },
+    "品牌曝光": {
+        "keyword_groups": [
+            ["品牌", "品牌记忆", "记忆点", "印象"],
+            ["信任", "价值", "理念", "长期"],
+            ["关注", "分享", "传播", "共鸣"],
+        ],
+        "rationale": "品牌曝光目标需要品牌记忆点、信任表达和可传播的温和引导",
+    },
+}
+
 REVIEW_FLOW_STEPS = {
     "通过": {
         "steps": ["T7 人工审核", "T8 版本保存", "T9 CSV / Excel 导出"],
@@ -156,9 +191,9 @@ def score_script_quality(script: dict[str, Any]) -> dict[str, Any]:
             script.get("conversion_cta"),
             script.get("risk_notes"),
         ],
-        20,
+        18,
     )
-    attraction_score = _score_hook(script.get("hook", ""))
+    attraction_score = _scale_score(_score_hook(script.get("hook", "")), 16)
     selling_score = _score_presence(
         [
             script.get("product_name") or script.get("title"),
@@ -166,17 +201,19 @@ def score_script_quality(script: dict[str, Any]) -> dict[str, Any]:
             script.get("subtitle_points"),
             script.get("conversion_cta"),
         ],
-        20,
+        18,
     )
     compliance_score = max(0, 20 - (len(risks) * 5))
-    shootability_score = _score_presence([storyboard, material_suggestions], 20)
+    shootability_score = _score_presence([storyboard, material_suggestions], 14)
+    goal_score, goal_rationale = _score_business_goal_alignment(script, 14)
 
     dimensions = [
-        _dimension("structure", "结构完整度", structure_score, "Hook、口播、分镜、转化和合规提醒是否齐全"),
-        _dimension("attraction", "开头吸引力", attraction_score, "Hook 是否具体、短促、有痛点或场景"),
-        _dimension("selling_point", "卖点准确度", selling_score, "是否围绕产品、选题和卖点稳定表达"),
-        _dimension("compliance", "合规安全", compliance_score, "风险词越少，安全分越高"),
-        _dimension("shootability", "可拍摄性", shootability_score, "分镜和素材建议是否可执行"),
+        _dimension("structure", "结构完整度", structure_score, 18, "Hook、口播、分镜、转化和合规提醒是否齐全"),
+        _dimension("attraction", "开头吸引力", attraction_score, 16, "Hook 是否具体、短促、有痛点或场景"),
+        _dimension("selling_point", "卖点准确度", selling_score, 18, "是否围绕产品、选题和卖点稳定表达"),
+        _dimension("compliance", "合规安全", compliance_score, 20, "风险词越少，安全分越高"),
+        _dimension("shootability", "可拍摄性", shootability_score, 14, "分镜和素材建议是否可执行"),
+        _dimension("business_goal", "业务目标适配度", goal_score, 14, goal_rationale),
     ]
     total_score = round(sum(item["score"] for item in dimensions))
     suggestions = _quality_suggestions(dimensions, risks)
@@ -184,7 +221,7 @@ def score_script_quality(script: dict[str, Any]) -> dict[str, Any]:
     return {
         "total_score": total_score,
         "grade": _quality_grade(total_score),
-        "go_live_ready": total_score >= 75 and compliance_score >= 14,
+        "go_live_ready": total_score >= 75 and compliance_score >= 14 and goal_score >= 8,
         "dimensions": dimensions,
         "risk_findings": risks,
         "suggestions": suggestions,
@@ -376,6 +413,7 @@ def generate_demo_script(brief: ProductBrief) -> dict[str, Any]:
     scenario = brief.usage_scenario.strip() or "日常使用场景"
     platform = brief.platform.strip() or "抖音"
     goal = brief.business_goal.strip() or "转化"
+    content_type = brief.content_type.strip() or "口播"
 
     hook = f"{audience}，是不是也遇到过这种情况：{scenario}时，总想找一款更省心的{product}？"
     spoken_script = (
@@ -393,10 +431,26 @@ def generate_demo_script(brief: ProductBrief) -> dict[str, Any]:
         "hook": hook,
         "spoken_script": spoken_script,
         "storyboard": [
-            {"time": "0-3s", "visual": "人物口播开场，字幕突出用户痛点", "note": "Hook 要短，先抓场景"},
-            {"time": "3-10s", "visual": "展示产品特写或使用场景", "note": "切入核心卖点"},
-            {"time": "10-20s", "visual": "补充证明材料或用户反馈截图", "note": "如无素材，标记待补充"},
-            {"time": "20-30s", "visual": "回到人物口播并展示页面信息", "note": "完成转化引导"},
+            {
+                "time": "0-3s",
+                "visual": f"字幕打出“{audience}的{scenario}困扰”，镜头聚焦真实使用状态",
+                "note": "Hook 要短，先抓具体场景",
+            },
+            {
+                "time": "3-10s",
+                "visual": f"在{scenario}中展示{product}质地、起泡或冲洗细节",
+                "note": f"切入核心卖点：{points}",
+            },
+            {
+                "time": "10-20s",
+                "visual": "补充已确认的检测报告、页面信息或反馈截图",
+                "note": "如无素材，标记待补充",
+            },
+            {
+                "time": "20-30s",
+                "visual": f"回到{product}包装和页面入口，字幕提示下一步动作",
+                "note": "完成合规转化引导",
+            },
         ],
         "subtitle_points": [
             "场景痛点先出现",
@@ -415,6 +469,8 @@ def generate_demo_script(brief: ProductBrief) -> dict[str, Any]:
         ],
         "needs_confirmation": _confirmation_items(brief),
         "platform": platform,
+        "business_goal": goal,
+        "content_type": content_type,
         "product_name": product,
     }
     script["risk_findings"] = scan_script_risks(script)
@@ -558,12 +614,35 @@ def _score_hook(hook: str) -> int:
     return min(score, 20)
 
 
-def _dimension(key: str, label: str, score: int, rationale: str) -> dict[str, Any]:
+def _scale_score(score: int, max_score: int) -> int:
+    return round(max(0, min(score, 20)) * max_score / 20)
+
+
+def _score_business_goal_alignment(script: dict[str, Any], max_score: int) -> tuple[int, str]:
+    goal = str(script.get("business_goal") or "转化").strip() or "转化"
+    standard = BUSINESS_GOAL_QUALITY_STANDARDS.get(
+        goal,
+        {
+            "keyword_groups": [["真实", "可信", "场景"], ["产品", "卖点", "价值"], ["行动", "建议", "了解"]],
+            "rationale": "当前业务目标需要脚本内容、行动建议和可信表达保持一致",
+        },
+    )
+    text = _public_script_text(script)
+    keyword_groups = standard["keyword_groups"]
+    hits = 0
+    for group in keyword_groups:
+        if any(keyword in text for keyword in group):
+            hits += 1
+    score = round(max_score * hits / len(keyword_groups)) if keyword_groups else 0
+    return score, f"{goal}：{standard['rationale']}"
+
+
+def _dimension(key: str, label: str, score: int, max_score: int, rationale: str) -> dict[str, Any]:
     return {
         "key": key,
         "label": label,
         "score": score,
-        "max_score": 20,
+        "max_score": max_score,
         "rationale": rationale,
     }
 
@@ -571,7 +650,7 @@ def _dimension(key: str, label: str, score: int, rationale: str) -> dict[str, An
 def _quality_suggestions(dimensions: list[dict[str, Any]], risks: list[dict[str, Any]]) -> list[str]:
     suggestions = []
     for item in dimensions:
-        if item["score"] < 14:
+        if item["score"] < round(item["max_score"] * 0.7):
             suggestions.append(f"优化{item['label']}：{item['rationale']}。")
     if risks:
         words = "、".join(item["word"] for item in risks[:3])
