@@ -360,7 +360,11 @@ def test_export_table_keeps_readable_columns_on_small_screens():
     assert "exportLinks" in js
     assert "selectedExportIds" in js
     assert "data-export-id" in js
-    assert "buildExportHref" in js
+    assert "downloadScriptsClientSide" in js
+    assert "event.preventDefault()" in js
+    assert "URL.createObjectURL" in js
+    assert "new Blob" in js
+    assert "EXPORT_COLUMNS" in js
     assert "syncExportSelection" in js
     assert "lastExportedAt" in js
     assert "formatDateTime" in js

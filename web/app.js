@@ -52,6 +52,32 @@ let savedScripts = [];
 let selectedExportIds = new Set();
 let lastExportedAt = "";
 
+const EXPORT_COLUMNS = [
+  ["id", "脚本ID"],
+  ["generated_at", "脚本生成时间"],
+  ["saved_at", "版本保存时间"],
+  ["exported_at", "文件导出时间"],
+  ["product_name", "产品名称"],
+  ["platform", "平台"],
+  ["title", "选题标题"],
+  ["hook", "Hook"],
+  ["spoken_script", "口播脚本"],
+  ["conversion_cta", "转化口播"],
+  ["storyboard", "分镜建议"],
+  ["subtitle_points", "字幕重点"],
+  ["material_suggestions", "素材建议"],
+  ["risk_notes", "合规提醒"],
+  ["needs_confirmation", "待确认信息"],
+  ["risk_findings", "风险初筛命中"],
+  ["generation_mode", "生成模式"],
+  ["review_status", "审核状态"],
+  ["reviewer", "审核人"],
+  ["version_no", "版本号"],
+  ["review_flow.next_action", "下一流程"],
+  ["quality_score.total_score", "质量总分"],
+  ["quality_score.grade", "质量等级"],
+];
+
 const stepPages = {
   taskCard: document.querySelector("#taskCard"),
   decompositionCard: document.querySelector("#decompositionCard"),
@@ -131,11 +157,9 @@ reviewStatus.addEventListener("change", () => {
 });
 
 exportLinks.forEach((link) => {
-  link.addEventListener("click", () => {
-    link.href = buildExportHref(link.getAttribute("href") || "");
-    lastExportedAt = new Date().toISOString();
-    updateExportTimeStatus(link.dataset.exportFormat || "");
-    renderSavedTable(savedScripts);
+  link.addEventListener("click", (event) => {
+    event.preventDefault();
+    downloadScriptsClientSide(link.dataset.exportFormat || "CSV");
   });
 });
 
@@ -1732,6 +1756,147 @@ function buildExportHref(baseHref) {
   }
   const params = new URLSearchParams({ ids: ids.join(",") });
   return `${cleanHref}?${params.toString()}`;
+}
+
+function downloadScriptsClientSide(format = "CSV") {
+  const exportedAt = new Date().toISOString();
+  const records = getScriptsForExport();
+  if (!records.length) {
+    toast("暂无可导出的脚本");
+    return;
+  }
+
+  const normalizedFormat = String(format || "CSV").toLowerCase();
+  const isExcel = normalizedFormat.includes("excel");
+  const content = isExcel ? scriptsToExcelXml(records, exportedAt) : scriptsToCsv(records, exportedAt);
+  const filename = isExcel ? "ai-script-demo-export.xls" : "ai-script-demo-export.csv";
+  const contentType = isExcel
+    ? "application/vnd.ms-excel;charset=utf-8"
+    : "text/csv;charset=utf-8";
+
+  triggerFileDownload(content, filename, contentType);
+  lastExportedAt = exportedAt;
+  updateExportTimeStatus(format);
+  renderSavedTable(savedScripts);
+}
+
+function getScriptsForExport() {
+  const selectedIds = new Set([...selectedExportIds].filter(Boolean));
+  const records = selectedIds.size
+    ? savedScripts.filter((item) => selectedIds.has(String(item.id || "")))
+    : savedScripts;
+  return sortSavedScriptsForView(records);
+}
+
+function scriptsToCsv(records, exportedAt) {
+  const rows = [
+    EXPORT_COLUMNS.map(([, label]) => label),
+    ...records.map((record) => EXPORT_COLUMNS.map(([key]) => exportValue(record, key, exportedAt))),
+  ];
+  return `\uFEFF${rows.map((row) => row.map(csvCell).join(",")).join("\r\n")}`;
+}
+
+function scriptsToExcelXml(records, exportedAt) {
+  const headerCells = EXPORT_COLUMNS
+    .map(([, label]) => `<Cell><Data ss:Type="String">${xmlEscape(label)}</Data></Cell>`)
+    .join("");
+  const rows = records.map((record) => {
+    const cells = EXPORT_COLUMNS
+      .map(([key]) => `<Cell><Data ss:Type="String">${xmlEscape(exportValue(record, key, exportedAt))}</Data></Cell>`)
+      .join("");
+    return `<Row>${cells}</Row>`;
+  });
+  return [
+    "<?xml version=\"1.0\"?>",
+    "<?mso-application progid=\"Excel.Sheet\"?>",
+    "<Workbook xmlns=\"urn:schemas-microsoft-com:office:spreadsheet\" xmlns:ss=\"urn:schemas-microsoft-com:office:spreadsheet\">",
+    "<Worksheet ss:Name=\"脚本库\"><Table>",
+    `<Row>${headerCells}</Row>`,
+    ...rows,
+    "</Table></Worksheet>",
+    "</Workbook>",
+  ].join("\n");
+}
+
+function exportValue(record, key, exportedAt = "") {
+  if (key === "exported_at") {
+    return exportedAt;
+  }
+  if (key === "generated_at") {
+    return record.generated_at || record.created_at || record.saved_at || "";
+  }
+  if (key === "saved_at") {
+    return record.saved_at || record.created_at || "";
+  }
+  const value = key.split(".").reduce((current, part) => (
+    current && typeof current === "object" ? current[part] : ""
+  ), record);
+  return formatExportValue(value);
+}
+
+function formatExportValue(value) {
+  if (Array.isArray(value)) {
+    return value.map(formatExportItem).filter(Boolean).join("\n");
+  }
+  if (value && typeof value === "object") {
+    return formatExportItem(value);
+  }
+  return value ?? "";
+}
+
+function formatExportItem(value) {
+  if (Array.isArray(value)) {
+    return value.map(formatExportItem).filter(Boolean).join("；");
+  }
+  if (value && typeof value === "object") {
+    if ("time" in value || "visual" in value || "note" in value) {
+      return [value.time, value.visual, value.note].map((item) => String(item || "").trim()).filter(Boolean).join(" | ");
+    }
+    if ("word" in value || "category" in value || "replacement" in value) {
+      return [
+        value.word ? `词：${value.word}` : "",
+        value.category ? `类型：${value.category}` : "",
+        value.replacement ? `建议：${value.replacement}` : "",
+      ].filter(Boolean).join("；");
+    }
+    return Object.entries(value)
+      .map(([key, child]) => {
+        const text = formatExportItem(child);
+        return text ? `${key}：${text}` : "";
+      })
+      .filter(Boolean)
+      .join("；");
+  }
+  return String(value ?? "").trim();
+}
+
+function csvCell(value) {
+  const text = String(value ?? "");
+  if (/[",\r\n]/.test(text)) {
+    return `"${text.replace(/"/g, "\"\"")}"`;
+  }
+  return text;
+}
+
+function xmlEscape(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+function triggerFileDownload(content, filename, contentType) {
+  const blob = new Blob([content], { type: contentType });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
 }
 
 function updateExportTimeStatus(format = "") {
