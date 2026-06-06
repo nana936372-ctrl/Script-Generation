@@ -1820,18 +1820,23 @@ function scriptsToExcelXml(records, exportedAt) {
 
 function exportValue(record, key, exportedAt = "") {
   if (key === "exported_at") {
-    return exportedAt;
+    return formatExportDateTime(exportedAt);
   }
   if (key === "generated_at") {
-    return record.generated_at || record.created_at || record.saved_at || "";
+    return formatExportDateTime(record.generated_at || record.created_at || record.saved_at || "");
   }
   if (key === "saved_at") {
-    return record.saved_at || record.created_at || "";
+    return formatExportDateTime(record.saved_at || record.created_at || "");
   }
   const value = key.split(".").reduce((current, part) => (
     current && typeof current === "object" ? current[part] : ""
   ), record);
   return formatExportValue(value);
+}
+
+function formatExportDateTime(value) {
+  const formatted = formatDateTime(value);
+  return formatted === "暂无" ? "" : formatted;
 }
 
 function formatExportValue(value) {

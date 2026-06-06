@@ -178,9 +178,9 @@ class DemoCoreTests(unittest.TestCase):
         records = [
             {
                 "id": "script-1",
-                "created_at": "2026-06-03T18:30:00",
-                "generated_at": "2026-06-03T18:25:00",
-                "saved_at": "2026-06-03T18:35:00",
+                "created_at": "2026-06-03T10:30:00+00:00",
+                "generated_at": "2026-06-03T10:25:00+00:00",
+                "saved_at": "2026-06-03T10:35:00+00:00",
                 "product_name": "氨基酸洁面乳",
                 "platform": "抖音",
                 "title": "油敏肌洁面怎么选",
@@ -191,13 +191,13 @@ class DemoCoreTests(unittest.TestCase):
             }
         ]
 
-        csv_text = scripts_to_csv(records, exported_at="2026-06-03T19:00:00")
+        csv_text = scripts_to_csv(records, exported_at="2026-06-03T11:00:00+00:00")
         rows = list(csv.DictReader(io.StringIO(csv_text)))
 
         self.assertEqual(rows[0]["脚本ID"], "script-1")
-        self.assertEqual(rows[0]["脚本生成时间"], "2026-06-03T18:25:00")
-        self.assertEqual(rows[0]["版本保存时间"], "2026-06-03T18:35:00")
-        self.assertEqual(rows[0]["文件导出时间"], "2026-06-03T19:00:00")
+        self.assertEqual(rows[0]["脚本生成时间"], "2026/06/03 18:25:00")
+        self.assertEqual(rows[0]["版本保存时间"], "2026/06/03 18:35:00")
+        self.assertEqual(rows[0]["文件导出时间"], "2026/06/03 19:00:00")
         self.assertEqual(rows[0]["产品名称"], "氨基酸洁面乳")
         self.assertEqual(rows[0]["口播脚本"], "这条脚本\n包含换行")
 
@@ -260,14 +260,14 @@ class DemoCoreTests(unittest.TestCase):
         self.assertIn("检测报告截图", rows[0]["素材建议"])
 
     def test_scripts_to_csv_falls_back_to_created_at_for_missing_generation_time(self):
-        records = [{"id": "script-1", "created_at": "2026-06-03T18:30:00"}]
+        records = [{"id": "script-1", "created_at": "2026-06-03T10:30:00+00:00"}]
 
-        csv_text = scripts_to_csv(records, exported_at="2026-06-03T19:00:00")
+        csv_text = scripts_to_csv(records, exported_at="2026-06-03T11:00:00+00:00")
         rows = list(csv.DictReader(io.StringIO(csv_text)))
 
-        self.assertEqual(rows[0]["脚本生成时间"], "2026-06-03T18:30:00")
-        self.assertEqual(rows[0]["版本保存时间"], "2026-06-03T18:30:00")
-        self.assertEqual(rows[0]["文件导出时间"], "2026-06-03T19:00:00")
+        self.assertEqual(rows[0]["脚本生成时间"], "2026/06/03 18:30:00")
+        self.assertEqual(rows[0]["版本保存时间"], "2026/06/03 18:30:00")
+        self.assertEqual(rows[0]["文件导出时间"], "2026/06/03 19:00:00")
 
     def test_scripts_to_excel_xml_exports_excel_readable_workbook(self):
         records = [
@@ -290,7 +290,7 @@ class DemoCoreTests(unittest.TestCase):
         self.assertIn("<Workbook", xml)
         self.assertIn("脚本生成时间", xml)
         self.assertIn("文件导出时间", xml)
-        self.assertIn("2026-06-03T19:00:00", xml)
+        self.assertIn("2026/06/03 19:00:00", xml)
         self.assertIn("氨基酸洁面乳", xml)
         self.assertIn("油敏肌洁面怎么选", xml)
 

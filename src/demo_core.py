@@ -4,6 +4,7 @@ import csv
 import html
 import io
 from dataclasses import asdict, dataclass
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 
@@ -687,11 +688,11 @@ def _metric_averages(rows: list[dict[str, Any]]) -> dict[str, float]:
 
 def _export_value(record: dict[str, Any], key: str, exported_at: str = "") -> Any:
     if key == "exported_at":
-        return exported_at
+        return _format_export_datetime(exported_at)
     if key == "generated_at":
-        return record.get("generated_at") or record.get("created_at") or record.get("saved_at", "")
+        return _format_export_datetime(record.get("generated_at") or record.get("created_at") or record.get("saved_at", ""))
     if key == "saved_at":
-        return record.get("saved_at") or record.get("created_at", "")
+        return _format_export_datetime(record.get("saved_at") or record.get("created_at", ""))
 
     value: Any = record
     for part in key.split("."):
@@ -700,6 +701,20 @@ def _export_value(record: dict[str, Any], key: str, exported_at: str = "") -> An
         else:
             return ""
     return _format_export_value(value)
+
+
+def _format_export_datetime(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    try:
+        normalized = text.replace("Z", "+00:00")
+        parsed = datetime.fromisoformat(normalized)
+        if parsed.tzinfo is None:
+            return parsed.strftime("%Y/%m/%d %H:%M:%S")
+        return parsed.astimezone(timezone(timedelta(hours=8))).strftime("%Y/%m/%d %H:%M:%S")
+    except ValueError:
+        return text
 
 
 def _format_export_value(value: Any) -> Any:
